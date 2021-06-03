@@ -49,8 +49,8 @@ else ()
 endif ()
 
 
-set(CMAKE_C_FLAGS_DEBUG "-Wall -Werror -Wextra -Wno-type-limits -g -O2 -fno-inline")
-set(CMAKE_C_FLAGS_RELEASE "-Werror -Wall -Wextra")
+set(CMAKE_C_FLAGS_DEBUG "-Wall -Wextra -Wno-type-limits -g -O2 -fno-inline")
+set(CMAKE_C_FLAGS_RELEASE "-Wall -Wextra")
 
 if (ENABLE_CODE_COVERAGE)
     include (CodeCoverage)
