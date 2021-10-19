@@ -20,7 +20,7 @@
 #include <rbus.h>
 #include "rbus_log.h"
 #include "rbus_buffer.h"
-#include "rtMemory.h"
+#include <rtmessage/rtMemory.h>
 #include <endian.h>
 #include <assert.h>
 #include <stdlib.h>

@@ -18,7 +18,7 @@
 */
 
 #include "rbus_tokenchain.h"
-#include <rtMemory.h>
+#include <rtmessage/rtMemory.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>

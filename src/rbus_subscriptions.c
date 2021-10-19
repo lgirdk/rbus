@@ -20,7 +20,7 @@
 #include "rbus_subscriptions.h"
 #include "rbus_buffer.h"
 #include "rbus_handle.h"
-#include <rtMemory.h>
+#include <rtmessage/rtMemory.h>
 #include <string.h>
 #include <assert.h>
 #include <sys/stat.h>
