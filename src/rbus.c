@@ -23,8 +23,8 @@
 #include <assert.h>
 #include <pthread.h>
 #include <unistd.h>
-#include <rtVector.h>
-#include <rtMemory.h>
+#include <rtmessage/rtVector.h>
+#include <rtmessage/rtMemory.h>
 #include <rbus_core.h>
 #include <rbus_session_mgr.h>
 #include <rbus.h>
