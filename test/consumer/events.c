@@ -27,7 +27,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <rbus.h>
-#include <rtList.h>
+#include <rtmessage/rtList.h>
 #include "../common/test_macros.h"
 
 #define SLEEP_TABLE_ROWS 1
