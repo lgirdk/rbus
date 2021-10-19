@@ -18,8 +18,8 @@
 */
 
 #include <rbus.h>
-#include <rtRetainable.h>
-#include <rtMemory.h>
+#include <rtmessage/rtRetainable.h>
+#include <rtmessage/rtMemory.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>

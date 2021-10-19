@@ -3,9 +3,9 @@
 #include "rbus_config.h"
 #include <rbus_core.h>
 #include "rbus_log.h"
-#include <rtTime.h>
-#include <rtList.h>
-#include <rtMemory.h>
+#include <rtmessage/rtTime.h>
+#include <rtmessage/rtList.h>
+#include <rtmessage/rtMemory.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include <string.h>

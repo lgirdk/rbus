@@ -3,8 +3,8 @@
 
 #include "rbus_element.h"
 #include "rbus_subscriptions.h"
-#include <rtConnection.h>
-#include <rtVector.h>
+#include <rtmessage/rtConnection.h>
+#include <rtmessage/rtVector.h>
 
 #ifdef __cplusplus
 extern "C" {

@@ -18,8 +18,8 @@
 */
 
 #include <stdlib.h>
-#include <rtRetainable.h>
-#include <rtMemory.h>
+#include <rtmessage/rtRetainable.h>
+#include <rtmessage/rtMemory.h>
 #include "rbus_log.h"
 #include <assert.h>
 #include "rbus_filter.h"
