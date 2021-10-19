@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <rbus.h>
-#include <rtMemory.h>
+#include <rtmessage/rtMemory.h>
 #include "mta_hal_tr104.h"
 
 rbusError_t mta_tr104_rbusGetHandler(rbusHandle_t handle, rbusProperty_t inProperty, rbusGetHandlerOptions_t* opt)

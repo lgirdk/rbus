@@ -24,7 +24,7 @@
 #include <assert.h>
 #include "rbus_element.h"
 #include "rbus_subscriptions.h"
-#include <rtMemory.h>
+#include <rtmessage/rtMemory.h>
 #include <pthread.h>
 
 #define VERIFY_NULL(T) if(NULL == T){ return; }

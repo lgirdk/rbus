@@ -27,7 +27,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <rbus.h>
-#include <rtMemory.h>
+#include <rtmessage/rtMemory.h>
 
 int loopFor = 10;
 rbusHandle_t handle;

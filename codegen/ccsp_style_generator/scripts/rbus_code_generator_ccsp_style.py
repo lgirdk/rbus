@@ -46,8 +46,8 @@ header_rbus_c = """/*
 
 #include <rbus.h>
 #include <rbus_context_helpers.h>
-#include <rtMemory.h>
-#include <rtLog.h>
+#include <rtmessage/rtMemory.h>
+#include <rtmessage/rtLog.h>
 #include <stdlib.h>
 #include <string.h>
 

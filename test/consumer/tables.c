@@ -28,7 +28,7 @@
 #include <getopt.h>
 #include <rbus.h>
 #include "../common/test_macros.h"
-#include <rtMemory.h>
+#include <rtmessage/rtMemory.h>
 
 int getDurationTables()
 {

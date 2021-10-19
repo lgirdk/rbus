@@ -26,9 +26,9 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include <rbus.h>
-#include <rtList.h>
-#include <rtTime.h>
-#include <rtMemory.h>
+#include <rtmessage/rtList.h>
+#include <rtmessage/rtTime.h>
+#include <rtmessage/rtMemory.h>
 #include <linenoise.h>
 #include <stdarg.h>
 #include <rbus_core.h>

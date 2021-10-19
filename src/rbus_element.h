@@ -23,9 +23,9 @@
 #include <stdlib.h>
 #include <rbus.h>
 #include <rbus_core.h>
-#include <rtList.h>
-#include <rtVector.h>
-#include <rtTime.h>
+#include <rtmessage/rtList.h>
+#include <rtmessage/rtVector.h>
+#include <rtmessage/rtTime.h>
 #include "rbus_log.h"
 
 #ifdef __cplusplus

@@ -18,7 +18,7 @@
 */
 #include "rbus.h"
 #include "rbus_handle.h"
-#include <rtMemory.h>
+#include <rtmessage/rtMemory.h>
 #include <string.h>
 
 #define VERIFY_NULL(T) if(NULL == T){ return RBUS_ERROR_INVALID_INPUT; }
