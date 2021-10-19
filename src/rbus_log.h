@@ -29,7 +29,7 @@
 #define RBUS_LOG_H
 
 #include <stdarg.h>
-#include "rtLog.h"
+#include <rtmessage/rtLog.h>
 
 #ifdef ENABLE_RDKLOGGER
 #include "rdk_debug.h"

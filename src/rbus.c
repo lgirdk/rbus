@@ -23,7 +23,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <unistd.h>
-#include <rtVector.h>
+#include <rtmessage/rtVector.h>
 #include <rbus_core.h>
 #include <rbus_session_mgr.h>
 #include <rbus.h>
