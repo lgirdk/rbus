@@ -18,7 +18,7 @@
 */
 
 #include <rbus.h>
-#include <rtTime.h>
+#include <rtmessage/rtTime.h>
 #include <rbus_config.h>
 #include "../common/test_macros.h"
 #include <stdio.h>
