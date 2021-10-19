@@ -42,8 +42,8 @@
 #include <unistd.h>
 #include <assert.h>
 #include <errno.h>
-#include <rtVector.h>
-#include <rtTime.h>
+#include <rtmessage/rtVector.h>
+#include <rtmessage/rtTime.h>
 
 #define ERROR_CHECK(CMD) \
 { \

@@ -28,8 +28,8 @@
 #include <getopt.h>
 #include <assert.h>
 #include <rbus.h>
-#include <rtList.h>
-#include <rtLog.h>
+#include <rtmessage/rtList.h>
+#include <rtmessage/rtLog.h>
 #include "../common/runningParamHelper.h"
 #include "../common/testValueHelper.h"
 

@@ -21,7 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include <rtRetainable.h>
+#include <rtmessage/rtRetainable.h>
 
 struct _rbusObject
 {

@@ -27,7 +27,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <rbus.h>
-#include <rtLog.h>
+#include <rtmessage/rtLog.h>
 #include "../common/runningParamHelper.h"
 
 int getDurationElementTree();
