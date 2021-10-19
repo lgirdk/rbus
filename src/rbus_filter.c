@@ -18,7 +18,7 @@
 */
 
 #include <stdlib.h>
-#include <rtRetainable.h>
+#include <rtmessage/rtRetainable.h>
 #include "rbus_log.h"
 #include <assert.h>
 #include "rbus_filter.h"

@@ -236,8 +236,8 @@
 #include <string.h>
 #include <getopt.h>
 #include <rbus.h>
-#include <rtList.h>
-#include <rtLog.h>
+#include <rtmessage/rtList.h>
+#include <rtmessage/rtLog.h>
 #include "../common/runningParamHelper.h"
 #include "../common/test_macros.h"
 
