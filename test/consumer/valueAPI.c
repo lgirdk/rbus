@@ -15,7 +15,7 @@
 #include "../../src/rbus_buffer.h"
 #include <math.h>
 #include "../common/test_macros.h"
-#include <rtMemory.h>
+#include <rtmessage/rtMemory.h>
 
 int getDurationValueAPI()
 {

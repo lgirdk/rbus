@@ -29,7 +29,7 @@
 #include <rbus.h>
 #include "../common/testValueHelper.h"
 #include "../common/test_macros.h"
-#include <rtMemory.h>
+#include <rtmessage/rtMemory.h>
 
 int getDurationValue()
 {

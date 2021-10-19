@@ -31,9 +31,9 @@
 #include <math.h>
 #include <inttypes.h>
 #include <float.h>
-#include <rtRetainable.h>
+#include <rtmessage/rtRetainable.h>
 #include <limits.h>
-#include <rtMemory.h>
+#include <rtmessage/rtMemory.h>
 #include "rbus_buffer.h"
 #include "rbus_log.h"
 

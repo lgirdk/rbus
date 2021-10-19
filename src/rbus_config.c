@@ -1,6 +1,6 @@
 #include "rbus_config.h"
 #include "rbus_log.h"
-#include <rtMemory.h>
+#include <rtmessage/rtMemory.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
