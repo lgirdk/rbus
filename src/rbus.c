@@ -1393,7 +1393,7 @@ static void _get_recursive_wildcard_handler(elementNode* node, char const* query
     if (node != NULL)
     {
         /*if table getHandler, then pass the query to it and stop recursion*/
-        if((node->type == RBUS_ELEMENT_TYPE_TABLE) && (node->cbTable.getHandler))
+        if(node->type == RBUS_ELEMENT_TYPE_TABLE && node->cbTable.getHandler)
         {
             rbusError_t result;
             rbusProperty_t tmpProperties;
@@ -1427,6 +1427,7 @@ static void _get_recursive_wildcard_handler(elementNode* node, char const* query
             {
                 RBUSLOG_DEBUG("%*s_get_recursive_wildcard_handler table getHandler failed rc=%d", level*4, " ", result);
             }
+            
             rbusProperty_Release(tmpProperties);
             return;
         }
@@ -1435,7 +1436,7 @@ static void _get_recursive_wildcard_handler(elementNode* node, char const* query
 
         while(child)
         {
-            if((child->type == RBUS_ELEMENT_TYPE_PROPERTY) && (child->cbTable.getHandler))
+            if(child->type != RBUS_ELEMENT_TYPE_TABLE && child->cbTable.getHandler)
             {
                 rbusError_t result;
                 char instanceName[RBUS_MAX_NAME_LENGTH];
