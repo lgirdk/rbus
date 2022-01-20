@@ -1463,20 +1463,16 @@ static void _get_callback_handler (rbusHandle_t handle, rbusMessage request, rbu
                     _get_recursive_wildcard_handler(el, hasInstance ? NULL : parameterName, handle, pCompName, xproperties, &count, 0);
                     RBUSLOG_DEBUG("We have identified %d entries that are matching the request and got the value. Lets return it.", count);
 
+                    rbusMessage_SetInt32(*response, (int) RBUS_ERROR_SUCCESS);
+                    rbusMessage_SetInt32(*response, count);
                     if (count > 0)
                     {
                         first = rbusProperty_GetNext(xproperties);
-                        rbusMessage_SetInt32(*response, (int) RBUS_ERROR_SUCCESS);
-                        rbusMessage_SetInt32(*response, count);
                         for(i = 0; i < count; i++)
                         {
                             rbusValue_appendToMessage(rbusProperty_GetName(first), rbusProperty_GetValue(first), *response);
                             first = rbusProperty_GetNext(first);
                         }
-                    }
-                    else
-                    {
-                        rbusMessage_SetInt32(*response, (int) RBUS_ERROR_ELEMENT_DOES_NOT_EXIST);
                     }
                     /* Release the memory */
                     rbusProperty_Release(xproperties);
@@ -2343,15 +2339,39 @@ rbusError_t rbus_getExt(rbusHandle_t handle, int paramCount, char const** pParam
                     {
                         if (0 == i)
                         {
-                            errorcode = _getExt_response_parser(response, &tmpNumOfValues, retProperties);
-                            last = *retProperties;
+                            if((errorcode = _getExt_response_parser(response, &tmpNumOfValues, retProperties)) != RBUS_ERROR_SUCCESS)
+                            {
+                                RBUSLOG_ERROR("%s error parsing response %d", __FUNCTION__, errorcode);
+                            }
+                            else
+                            {
+                                if(tmpNumOfValues > 0)
+                                    last = *retProperties;
+                            }
                         }
                         else
                         {
                             rbusProperty_t tmpProperties;
-                            errorcode = _getExt_response_parser(response, &tmpNumOfValues, &tmpProperties);
-                            rbusProperty_PushBack(last, tmpProperties);
-                            last = tmpProperties;
+
+                            if((errorcode = _getExt_response_parser(response, &tmpNumOfValues, &tmpProperties)) != RBUS_ERROR_SUCCESS)
+                            {
+                                RBUSLOG_ERROR("%s error parsing response %d", __FUNCTION__, errorcode);
+                            }
+                            else
+                            {
+                                if(tmpNumOfValues > 0 && tmpProperties)
+                                {
+                                    if(NULL != last)
+                                    {
+                                        rbusProperty_PushBack(last, tmpProperties);
+                                    }
+                                    else
+                                    {
+                                        last = tmpProperties;
+                                        *retProperties = last;
+                                    }
+                                }
+                            }
                         }
                     }
                     if (errorcode != RBUS_ERROR_SUCCESS)
