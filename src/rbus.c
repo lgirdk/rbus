@@ -231,7 +231,6 @@ static rbusEventSubscription_t* rbusEventSubscription_find(rtVector eventSubs, c
         if(sub && !strcmp(sub->eventName, eventName) && !rbusFilter_Compare(sub->filter, filter))
             return sub;
     }
-    RBUSLOG_WARN("rbusEventSubscription_find error: can't find %s", eventName);
     return NULL;
 }
 
@@ -313,8 +312,8 @@ void rbusPropertyList_initFromMessage(rbusProperty_t* prop, rbusMessage msg);
 void rbusPropertyList_appendToMessage(rbusProperty_t prop, rbusMessage msg);
 void rbusObject_initFromMessage(rbusObject_t* obj, rbusMessage msg);
 void rbusObject_appendToMessage(rbusObject_t obj, rbusMessage msg);
-void rbusEvent_updateFromMessage(rbusEvent_t* event, rbusMessage msg);
-void rbusEvent_appendToMessage(rbusEvent_t* event, rbusMessage msg);
+void rbusEventData_updateFromMessage(rbusEvent_t* event, rbusFilter_t* filter, int32_t* componentId, rbusMessage msg);
+void rbusEventData_appendToMessage(rbusEvent_t* event, rbusFilter_t filter, int32_t componentId, rbusMessage msg);
 void rbusFilter_AppendToMessage(rbusFilter_t filter, rbusMessage msg);
 void rbusFilter_InitFromMessage(rbusFilter_t* filter, rbusMessage msg);
 
@@ -433,25 +432,6 @@ void rbusProperty_initFromMessage(rbusProperty_t* property, rbusMessage msg)
     rbusValue_Release(value);
 }
 
-void rbusEvent_updateFromMessage(rbusEvent_t* event, rbusMessage msg)
-{
-    char const* name;
-    int type;
-    rbusObject_t data;
-
-    rbusMessage_GetString(msg, (char const**) &name);
-    rbusMessage_GetInt32(msg, (int*) &type);
-#if DEBUG_SERIALIZER
-    RBUSLOG_INFO("> event pop name=%s type=%d", name, type);
-#endif
-
-    rbusObject_initFromMessage(&data, msg);
-
-    event->name = name;
-    event->type = type;
-    event->data = data;/*caller must call rbusValue_Release*/
-}
-
 void rbusPropertyList_appendToMessage(rbusProperty_t prop, rbusMessage msg)
 {
     int numProps = 0;
@@ -528,7 +508,6 @@ void rbusObject_appendToMessage(rbusObject_t obj, rbusMessage msg)
         child = rbusObject_GetNext(child);
     }
 }
-
 
 void rbusObject_initFromMessage(rbusObject_t* obj, rbusMessage msg)
 {
@@ -656,43 +635,6 @@ void rbusValue_appendToMessage(char const* name, rbusValue_t value, rbusMessage 
     }
 }
 
-void rbusEvent_appendToMessage(rbusEvent_t* event, rbusMessage msg)
-{
-    rbusMessage_SetString(msg, event->name);
-    rbusMessage_SetInt32(msg, event->type);
-#if DEBUG_SERIALIZER
-    RBUSLOG_INFO("> event add name=%s type=%d", event->name, event->type);
-#endif
-    rbusObject_appendToMessage(event->data, msg);
-}
-
-bool _is_valid_get_query(char const* name)
-{
-    /* 1. Find whether the query ends with `!` to find out Event is being queried */
-    /* 2. Find whether the query ends with `()` to find out method is being queried */
-    if (name != NULL)
-    {
-        int length = strlen (name);
-        int temp = 0;
-        temp = length - 1;
-        if (('!' == name[temp]) ||
-            (')' == name[temp]) ||
-            (NULL != strstr (name, "(")))
-        {
-            RBUSLOG_DEBUG("Event or Method is Queried");
-            return false;
-        }
-    }
-    else
-    {
-        RBUSLOG_DEBUG("Null Pointer sent for Query");
-        return false;
-    }
-
-    return true;
-
-}
-
 void rbusFilter_AppendToMessage(rbusFilter_t filter, rbusMessage msg)
 {
     rbusMessage_SetInt32(msg, rbusFilter_GetType(filter));
@@ -739,6 +681,81 @@ void rbusFilter_InitFromMessage(rbusFilter_t* filter, rbusMessage msg)
         if(right)
             rbusFilter_Release(right);
     }
+}
+
+void rbusEventData_updateFromMessage(rbusEvent_t* event, rbusFilter_t* filter, int32_t* componentId, rbusMessage msg)
+{
+    char const* name;
+    int type;
+    rbusObject_t data;
+    int hasFilter = false;
+    
+    rbusMessage_GetString(msg, (char const**) &name);
+    rbusMessage_GetInt32(msg, (int*) &type);
+#if DEBUG_SERIALIZER
+    RBUSLOG_INFO("> event pop name=%s type=%d", name, type);
+#endif
+
+    rbusObject_initFromMessage(&data, msg);
+
+    rbusMessage_GetInt32(msg, &hasFilter);
+    if(hasFilter)
+        rbusFilter_InitFromMessage(filter, msg);
+    else
+        *filter = NULL;
+
+    event->name = name;
+    event->type = type;
+    event->data = data;
+
+    rbusMessage_GetInt32(msg, componentId);
+}
+
+void rbusEventData_appendToMessage(rbusEvent_t* event, rbusFilter_t filter, int32_t componentId, rbusMessage msg)
+{
+    rbusMessage_SetString(msg, event->name);
+    rbusMessage_SetInt32(msg, event->type);
+#if DEBUG_SERIALIZER
+    RBUSLOG_INFO("> event add name=%s type=%d", event->name, event->type);
+#endif
+    rbusObject_appendToMessage(event->data, msg);
+    if(filter)
+    {
+        rbusMessage_SetInt32(msg, 1);
+        rbusFilter_AppendToMessage(filter, msg);
+    }
+    else
+    {
+        rbusMessage_SetInt32(msg, 0);
+    }
+    rbusMessage_SetInt32(msg, componentId);
+}
+
+bool _is_valid_get_query(char const* name)
+{
+    /* 1. Find whether the query ends with `!` to find out Event is being queried */
+    /* 2. Find whether the query ends with `()` to find out method is being queried */
+    if (name != NULL)
+    {
+        int length = strlen (name);
+        int temp = 0;
+        temp = length - 1;
+        if (('!' == name[temp]) ||
+            (')' == name[temp]) ||
+            (NULL != strstr (name, "(")))
+        {
+            RBUSLOG_DEBUG("Event or Method is Queried");
+            return false;
+        }
+    }
+    else
+    {
+        RBUSLOG_DEBUG("Null Pointer sent for Query");
+        return false;
+    }
+
+    return true;
+
 }
 
 bool _is_wildcard_query(char const* name)
@@ -831,7 +848,16 @@ void valueChangeTableRowUpdate(rbusHandle_t handle, elementNode* rowNode, bool a
     }
 }
 
-int subscribeHandlerImpl(rbusHandle_t handle, bool added, elementNode* el, char const* eventName, char const* listener, int32_t interval, int32_t duration, rbusFilter_t filter)
+int subscribeHandlerImpl(
+    rbusHandle_t handle,
+    bool added,
+    elementNode* el,
+    char const* eventName,
+    char const* listener,
+    int32_t componentId,
+    int32_t interval,
+    int32_t duration,
+    rbusFilter_t filter)
 {
     rbusSubscription_t* subscription = NULL;
     struct _rbusHandle* handleInfo = (struct _rbusHandle*)handle;
@@ -859,7 +885,7 @@ int subscribeHandlerImpl(rbusHandle_t handle, bool added, elementNode* el, char 
 
     if(added)
     {
-        subscription = rbusSubscriptions_addSubscription(handleInfo->subscriptions, listener, eventName, filter, interval, duration, autoPublish, el);
+        subscription = rbusSubscriptions_addSubscription(handleInfo->subscriptions, listener, eventName, componentId, filter, interval, duration, autoPublish, el);
 
         if(!subscription)
         {
@@ -868,7 +894,7 @@ int subscribeHandlerImpl(rbusHandle_t handle, bool added, elementNode* el, char 
     }
     else
     {
-        subscription = rbusSubscriptions_getSubscription(handleInfo->subscriptions, listener, eventName, filter);
+        subscription = rbusSubscriptions_getSubscription(handleInfo->subscriptions, listener, eventName, componentId, filter);
 
         if(!subscription)
         {
@@ -934,7 +960,7 @@ static void registerTableRow (rbusHandle_t handle, elementNode* tableInstElem, c
 
     /*send OBJECT_CREATED event after we create the row*/
     {
-        rbusEvent_t event;
+        rbusEvent_t event = {0};
         rbusError_t respub;
         rbusObject_t data;
         rbusValue_t instNumVal;
@@ -961,7 +987,7 @@ static void registerTableRow (rbusHandle_t handle, elementNode* tableInstElem, c
         RBUSLOG_INFO("%s publishing ObjectCreated table=%s rowName=%s", __FUNCTION__, tableName, rowElem->fullName);
         respub = rbusEvent_Publish(handle, &event);
 
-        if(respub != RBUS_ERROR_SUCCESS)
+        if(respub != RBUS_ERROR_SUCCESS && respub != RBUS_ERROR_NOSUBSCRIBERS)
         {
             RBUSLOG_WARN("failed to publish ObjectCreated event err:%d", respub);
         }
@@ -990,7 +1016,7 @@ static void unregisterTableRow (rbusHandle_t handle, elementNode* rowInstElem)
 
     /*send OBJECT_DELETED event after we delete the row*/
     {
-        rbusEvent_t event;
+        rbusEvent_t event = {0};
         rbusError_t respub;
         rbusValue_t rowNameVal;
         rbusObject_t data;
@@ -1015,7 +1041,7 @@ static void unregisterTableRow (rbusHandle_t handle, elementNode* rowInstElem)
         rbusObject_Release(data);
         free(rowInstName);
 
-        if(respub != RBUS_ERROR_SUCCESS)
+        if(respub != RBUS_ERROR_SUCCESS && respub != RBUS_ERROR_NOSUBSCRIBERS)
         {
             RBUSLOG_WARN("failed to publish ObjectDeleted event err:%d", respub);
         }
@@ -1036,6 +1062,7 @@ static int _event_subscribe_callback_handler(char const* object,  char const* ev
 
     if(el)
     {
+        int32_t componentId = 0;
         int32_t interval = 0;
         int32_t duration = 0;
         rbusFilter_t filter = NULL;
@@ -1044,6 +1071,7 @@ static int _event_subscribe_callback_handler(char const* object,  char const* ev
         if(payload)
         {
             int hasFilter;
+            rbusMessage_GetInt32(payload, &componentId);
             rbusMessage_GetInt32(payload, &interval);
             rbusMessage_GetInt32(payload, &duration);
             rbusMessage_GetInt32(payload, &hasFilter);
@@ -1052,10 +1080,14 @@ static int _event_subscribe_callback_handler(char const* object,  char const* ev
                 rbusFilter_InitFromMessage(&filter, payload);
             }
         }
+        else
+        {
+            RBUSLOG_ERROR("%s: payload missing in subscribe request for event %s from listener %s", __FUNCTION__, eventName, listener);
+        }
 
         RBUSLOG_DEBUG("%s: found element of type %d", __FUNCTION__, el->type);
 
-        err = subscribeHandlerImpl(handle, added, el, eventName, listener, interval, duration, filter);
+        err = subscribeHandlerImpl(handle, added, el, eventName, listener, componentId, interval, duration, filter);
 
         if(filter)
         {
@@ -1104,9 +1136,11 @@ void _subscribe_async_callback_handler(rbusHandle_t handle, rbusEventSubscriptio
 
 int _event_callback_handler (char const* objectName, char const* eventName, rbusMessage message, void* userData)
 {
-    rbusEventSubscription_t* subscription;
-    rbusEventHandler_t handler;
-    rbusEvent_t event;
+    rbusEventSubscription_t* subscription = NULL;
+    rbusEventHandler_t handler = NULL;
+    rbusEvent_t event = {0};
+    rbusFilter_t filter = NULL;
+    int32_t componentId = 0;
 
     RBUSLOG_DEBUG("Received event callback: objectName=%s eventName=%s", 
         objectName, eventName);
@@ -1120,13 +1154,49 @@ int _event_callback_handler (char const* objectName, char const* eventName, rbus
 
     handler = (rbusEventHandler_t)subscription->handler;
 
-    rbusEvent_updateFromMessage(&event, message);
+    rbusEventData_updateFromMessage(&event, &filter, &componentId, message);
     
     (*handler)(subscription->handle, &event, subscription);
 
     rbusObject_Release(event.data);
 
     return 0;
+}
+
+static int _master_event_callback_handler(char const* sender, char const* eventName, rbusMessage message, void* userData)
+{
+    rbusEvent_t event = {0};
+    rbusFilter_t filter = NULL;
+    int32_t componentId = -1;
+    rbusEventSubscription_t* subscription = NULL;
+    UNUSED1(userData);
+
+    rbusEventData_updateFromMessage(&event, &filter, &componentId, message);
+
+    if(componentId < 0 || componentId >= MAX_COMPS_PER_PROCESS)
+    {
+        RBUSLOG_INFO("Received master event callback with invalid componentId: sender=%s eventName=%s componentId=%d", sender, eventName, componentId);
+        return RTMESSAGE_BUS_EVENT_NOT_HANDLED;
+    }
+
+    RBUSLOG_DEBUG("Received master event callback: sender=%s eventName=%s componentId=%d", sender, eventName, componentId);
+
+    subscription = rbusEventSubscription_find(handle_array[componentId].eventSubs, eventName, filter);
+
+    if(subscription)
+    {
+        ((rbusEventHandler_t)subscription->handler)(subscription->handle, &event, subscription);
+    }
+    else
+    {
+        RBUSLOG_DEBUG("Received master event callback: sender=%s eventName=%s, but no subscription found", sender, event.name);
+        return RTMESSAGE_BUS_EVENT_NOT_HANDLED;
+    }
+
+    rbusObject_Release(event.data);
+    rbusFilter_Release(filter);
+
+    return RTMESSAGE_BUS_SUCCESS;
 }
 
 static void _set_callback_handler (rbusHandle_t handle, rbusMessage request, rbusMessage *response)
@@ -1795,6 +1865,8 @@ rbusError_t rbus_open(rbusHandle_t* handle, char const* componentName)
 
     *handle = NULL;
 
+    RBUSLOG_INFO("%s: %s", __FUNCTION__, componentName);
+
     rbusConfig_CreateOnce();
 
     /*
@@ -1870,6 +1942,8 @@ rbusError_t rbus_open(rbusHandle_t* handle, char const* componentName)
 
     RBUSLOG_DEBUG("<%s>: rbus_registerSubscribeHandler() Success!", __FUNCTION__);
 
+    rbus_registerMasterEventHandler(_master_event_callback_handler, NULL);
+
     handle_array[foundIndex].inUse = 1;
     handle_array[foundIndex].componentName = strdup(componentName);
     *handle = tmpHandle;
@@ -1886,22 +1960,24 @@ rbusError_t rbus_close(rbusHandle_t handle)
     rbus_error_t err = RTMESSAGE_BUS_SUCCESS;
     struct _rbusHandle* handleInfo = (struct _rbusHandle*)handle;
 
+    RBUSLOG_INFO("%s: %s", __FUNCTION__, handleInfo->componentName);
+
     VERIFY_NULL(handle);
 
     RBUSLOG_DEBUG("%s: %s", __FUNCTION__, handleInfo->componentName);
 
     if(handleInfo->eventSubs)
     {
-        while(rtVector_Size(handleInfo->eventSubs))
+        int i;
+        int count = (int)rtVector_Size(handleInfo->eventSubs);
+        for(i = 0; i < count; ++i)
         {
-            rbusEventSubscription_t* sub = (rbusEventSubscription_t*)rtVector_At(handleInfo->eventSubs, 0);
-            if(sub)
-            {
-                if(sub->filter)
-                    rbusEvent_UnsubscribeEx(handle, sub, 1);
-                else
-                    rbusEvent_Unsubscribe(handle, sub->eventName);
-            }
+            rbusEvent_UnsubscribeEx(handle, (rbusEventSubscription_t*)rtVector_At(handleInfo->eventSubs, 0), 1);
+        }
+        count = (int)rtVector_Size(handleInfo->eventSubs);
+        if(count)
+        {
+            RBUSLOG_WARN("<%s>: %d event subs for [%s] were not unsubscribed", __FUNCTION__, count, handleInfo->componentName);
         }
         rtVector_Destroy(handleInfo->eventSubs, NULL);
         handleInfo->eventSubs = NULL;
@@ -2684,7 +2760,7 @@ rbusError_t rbus_setMulti(rbusHandle_t handle, int numProps, rbusProperty_t prop
             type = rbusValue_GetType(rbusProperty_GetValue(current));
             if (RBUS_NONE == type)
             {
-                printf("Invalid data type passed in one of the data type\n");
+                RBUSLOG_DEBUG("Invalid data type passed in one of the data type\n");
                 free(pParamNames);
                 return errorcode;
             }
@@ -3168,26 +3244,24 @@ rbusError_t rbusTable_unregisterRow(
 
 //************************** Events ****************************//
 
-static rbusMessage rbusEvent_CreatePayloadEx(rbusEventSubscription_t* sub)
+static rbusMessage rbusEvent_CreateSubscribePayload(rbusEventSubscription_t* sub, int32_t componentId)
 {
     rbusMessage payload = NULL;
 
-    if(sub->filter || sub->interval || sub->duration)
+    rbusMessage_Init(&payload);
+
+    rbusMessage_SetInt32(payload, componentId);
+    rbusMessage_SetInt32(payload, sub->interval);
+    rbusMessage_SetInt32(payload, sub->duration);
+
+    if(sub->filter)
     {
-        rbusMessage_Init(&payload);
-
-        rbusMessage_SetInt32(payload, sub->interval);
-        rbusMessage_SetInt32(payload, sub->duration);
-
-        if(sub->filter)
-        {
-            rbusMessage_SetInt32(payload, 1);
-            rbusFilter_AppendToMessage(sub->filter, payload);
-        }
-        else
-        {
-            rbusMessage_SetInt32(payload, 0);
-        }
+        rbusMessage_SetInt32(payload, 1);
+        rbusFilter_AppendToMessage(sub->filter, payload);
+    }
+    else
+    {
+        rbusMessage_SetInt32(payload, 0);
     }
 
     return payload;
@@ -3211,6 +3285,13 @@ static rbusError_t rbusEvent_SubscribeWithRetries(
     int destNotFoundSleep = 1000; /*miliseconds*/
     int destNotFoundTimeout;
     struct _rbusHandle* handleInfo = (struct _rbusHandle*)handle;
+    int32_t componentId = (int32_t)(handleInfo - handle_array);
+
+    if( rbusEventSubscription_find(handleInfo->eventSubs, eventName, filter) ||
+        rbusAsyncSubscribe_GetSubscription(handle, eventName, filter))
+    {
+        return RBUS_ERROR_SUBSCRIPTION_ALREADY_EXIST;
+    }
 
     if(timeout == -1)
     {
@@ -3226,7 +3307,6 @@ static rbusError_t rbusEvent_SubscribeWithRetries(
     sub->handle = handle;
     sub->eventName = strdup(eventName);
     sub->handler = handler;
-
     sub->userData = userData;
     sub->filter = filter;
     sub->duration = duration;
@@ -3236,11 +3316,13 @@ static rbusError_t rbusEvent_SubscribeWithRetries(
     if(sub->filter)
         rbusFilter_Retain(sub->filter);
 
-    payload = rbusEvent_CreatePayloadEx(sub);
+
+    payload = rbusEvent_CreateSubscribePayload(sub, componentId);
 
     if(sub->asyncHandler)
     {
-        rbusAsyncSubscribe_AddSubscription(sub);
+        //FIXME: this should take the payload too (mrollins) because rbus_asynsubscribe is passing NULL for filter to rbus_subscribeToEvent
+        rbusAsyncSubscribe_AddSubscription(sub, payload);
 
         return RBUS_ERROR_SUCCESS;
     }
@@ -3373,6 +3455,7 @@ rbusError_t rbusEvent_Unsubscribe(
     char const*         eventName)
 {
     struct _rbusHandle* handleInfo = (struct _rbusHandle*)handle;
+    int32_t componentId = (int32_t)(handleInfo - handle_array);
     rbusEventSubscription_t* sub;
 
     VERIFY_NULL(handle);
@@ -3386,7 +3469,9 @@ rbusError_t rbusEvent_Unsubscribe(
 
     if(sub)
     {
-        rbus_error_t coreerr = rbus_unsubscribeFromEvent(NULL, eventName, NULL);
+        rbusMessage payload = rbusEvent_CreateSubscribePayload(sub, componentId);
+
+        rbus_error_t coreerr = rbus_unsubscribeFromEvent(NULL, eventName, payload);
 
         rtVector_RemoveItem(handleInfo->eventSubs, sub, rbusEventSubscription_free);
 
@@ -3422,11 +3507,11 @@ rbusError_t rbusEvent_SubscribeEx(
     int                         timeout)
 {
     rbusError_t errorcode = RBUS_ERROR_SUCCESS;
-    int i, j;
+    int i;
 
     VERIFY_NULL(handle);
     VERIFY_NULL(subscription);
-    VERIFY_ZERO(numSubscriptions);
+    VERIFY_ZERO(numSubscriptions); 
 
     for(i = 0; i < numSubscriptions; ++i)
     {
@@ -3448,10 +3533,8 @@ rbusError_t rbusEvent_SubscribeEx(
                 if any subs fails, how will the user know which ones succeeded and which failed ?
                 So, as a transaction, we just undo everything, which are all those from 0 to i-1.
             */
-            for(j = 0; j < i; ++j)
-            {
-                rbusEvent_Unsubscribe(handle, subscription[i].eventName);
-            }
+            if(i > 0)
+                rbusEvent_UnsubscribeEx(handle, subscription, i);
             break;
         }
     }
@@ -3467,7 +3550,7 @@ rbusError_t rbusEvent_SubscribeExAsync(
     int                             timeout)
 {
     rbusError_t errorcode = RBUS_ERROR_SUCCESS;
-    int i, j;
+    int i;
 
     VERIFY_NULL(handle);
     VERIFY_NULL(subscription);
@@ -3490,10 +3573,8 @@ rbusError_t rbusEvent_SubscribeExAsync(
                 if any subs fails, how will the user know which ones succeeded and which failed ?
                 So, as a transaction, we just undo everything, which are all those from 0 to i-1.
             */
-            for(j = 0; j < i; ++j)
-            {
-                rbusEvent_Unsubscribe(handle, subscription[i].eventName);
-            }
+            if(i > 0)
+                rbusEvent_UnsubscribeEx(handle, subscription, i);
             break;
         }
     }
@@ -3513,6 +3594,7 @@ rbusError_t rbusEvent_UnsubscribeEx(
     VERIFY_ZERO(numSubscriptions);
 
     struct _rbusHandle* handleInfo = (struct _rbusHandle*)handle;
+    int32_t componentId = (int32_t)(handleInfo - handle_array);
     int i;
 
     //TODO we will call unsubscribe for every sub in list
@@ -3531,15 +3613,14 @@ rbusError_t rbusEvent_UnsubscribeEx(
         /*the use of rtVector is inefficient here.  I have to loop through the vector to find the sub by name, 
             then call RemoveItem, which loops through again to find the item by address to destroy */
         sub = rbusEventSubscription_find(handleInfo->eventSubs, subscription[i].eventName, subscription[i].filter);
-
         if(sub)
         {
             rbus_error_t coreerr;
             rbusMessage payload;
 
-            payload = rbusEvent_CreatePayloadEx(&subscription[i]);
+            payload = rbusEvent_CreateSubscribePayload(sub, componentId);
 
-            coreerr = rbus_unsubscribeFromEvent(NULL, subscription[i].eventName, payload);
+            coreerr = rbus_unsubscribeFromEvent(NULL, sub->eventName, payload);
 
             if(payload)
             {
@@ -3550,7 +3631,7 @@ rbusError_t rbusEvent_UnsubscribeEx(
 
             if(coreerr != RTMESSAGE_BUS_SUCCESS)
             {
-                RBUSLOG_INFO("%s: %s failed with core err=%d", __FUNCTION__, subscription[i].eventName, coreerr);
+                RBUSLOG_INFO("%s: %s failed with core err=%d", __FUNCTION__, sub->eventName, coreerr);
                 
                 //FIXME -- we just overwrite any existing error that might have happened in a previous loop
                 if(coreerr == RTMESSAGE_BUS_ERROR_DESTINATION_UNREACHABLE)
@@ -3565,8 +3646,17 @@ rbusError_t rbusEvent_UnsubscribeEx(
         }
         else
         {
-            RBUSLOG_INFO("%s: %s no existing subscription found", __FUNCTION__, subscription[i].eventName);
-            errorcode = RBUS_ERROR_INVALID_OPERATION; //TODO - is the the right error to return
+            rbusEventSubscription_t* sub = rbusAsyncSubscribe_GetSubscription(handle, subscription[i].eventName, subscription[i].filter);
+            if(sub)
+            {
+                RBUSLOG_INFO("%s: %s removed pending async subscription", __FUNCTION__, sub->eventName);
+                rbusAsyncSubscribe_RemoveSubscription(sub);
+            }
+            else
+            {
+                RBUSLOG_INFO("%s: %s no existing subscription found", __FUNCTION__, sub->eventName);
+                errorcode = RBUS_ERROR_INVALID_OPERATION; //TODO - is the the right error to return
+            }
         }
     }
 
@@ -3581,6 +3671,8 @@ rbusError_t  rbusEvent_Publish(
     rbus_error_t err, errOut = RTMESSAGE_BUS_SUCCESS;
     rtListItem listItem;
     rbusSubscription_t* subscription;
+    rbusValue_t newVal = NULL;
+    rbusValue_t oldVal = NULL;
 
     VERIFY_NULL(handle);
     VERIFY_NULL(eventData);
@@ -3602,6 +3694,21 @@ rbusError_t  rbusEvent_Publish(
         return RBUS_ERROR_NOSUBSCRIBERS;
     }
 
+    if(eventData->type == RBUS_EVENT_VALUE_CHANGED)
+    {
+        if(eventData->data)
+        {
+            newVal = rbusObject_GetValue(eventData->data, "value");
+            oldVal = rbusObject_GetValue(eventData->data, "oldValue");
+        }
+        if(!eventData->data || !newVal || !oldVal)
+        {
+            RBUSLOG_ERROR("%s: missing value data for value change event %s", __FUNCTION__, eventData->name);
+            return RBUS_ERROR_INVALID_INPUT;
+        }
+    }
+
+    /*Loop through element's subscriptions*/
     rtList_GetFront(el->subscriptions, &listItem);
     while(listItem)
     {
@@ -3616,124 +3723,48 @@ rbusError_t  rbusEvent_Publish(
             rtListItem_GetNext(listItem, &listItem);
         }
 
-        /* Commented out the following experiment.  Leaving it the comment for now.
-           The idea here was to only publish to the subscriber who either didn't have a filter,
-           or had a filter that was triggered.  So subscribers who had a filter that wasn't
-           triggered, would not get an event.  This would allow multiple consumers to 
-           subscribe to the same property but with different filters, and those consumers
-           would only get events when their specific filter was triggered.
-           So currently, without this code, if one consumer's filter is triggered, all
-           consumer's subscribed to this same property will get the event.
-        */
-#if 0
-        /* apply filter for value change events */
         if(eventData->type == RBUS_EVENT_VALUE_CHANGED)
         {
-            /*it is a code bug to call value change for non-properties*/
-            assert(el->type == RBUS_ELEMENT_TYPE_PROPERTY);
 
-            /* if autoPublish then rbus_valuechange should be the only one calling us*/
-            if(subscription->autoPublish)
+            /* if the subscriber has a filter we check the filter to determine if we publish to them.
+            if the subscriber does not have a filter, we publish always to them*/
+            if(subscription->filter)
             {
-                /* if the subscriber has a filter we check the filter to determine if we publish.
-                   if the subscriber does not have a filter, we publish always*/
-                if(subscription->filter)
+                /*We publish an event only when the value crosses the filter threshold boundary.
+                When the value crosses into the threshold we publish a single event signally the filter started matching.
+                When the value crosses out of the threshold we publish a single event signally the filter stopped matching.
+                We do not publish continuous events while the filter continues to match. The consumer can read the 'filter'
+                property from the event data to determine if the filter has started or stopped matching.  If the consumer
+                wants to get continuous value-change events, they can unsubscribe the filter and resubscribe without a filter*/
+
+                int newResult = rbusFilter_Apply(subscription->filter, newVal);
+                int oldResult = rbusFilter_Apply(subscription->filter, oldVal);
+
+                if(newResult != oldResult)
                 {
-                    /*We publish an event only when the value crosses the filter threshold boundary.
-                      When the value crosses into the threshold we publish a single event signally the filter started matching.
-                      When the value crosses out of the threshold we publish a single event signally the filter stopped matching.
-                      We do not publish continuous events while the filter continues to match. The consumer can read the 'filter'
-                      property from the event data to determine if the filter has started or stopped matching. */
-
-                    rbusValue_t valNew, valOld, valFilter;
-                    int cNew, cOld;
-                    int result = -1;/*-1 means don't publish*/
-    
-                    valNew = rbusObject_GetValue(eventData->data, "value");
-                    valOld = rbusObject_GetValue(eventData->data, "oldValue");
-                    valFilter = subscription->filter->filter.threshold.value;
-
-                    cNew = rbusValue_Compare(valNew, valFilter);
-                    cOld = rbusValue_Compare(valOld, valFilter);
-
-                    switch(subscription->filter->filter.threshold.type)
-                    {
-                    case RBUS_THRESHOLD_ON_CHANGE_GREATER_THAN:
-                        if(cNew > 0 && cOld <= 0)
-                            result = 1;
-                        else if(cNew <= 0 && cOld > 0)
-                            result = 0;
-                        break;
-                    case RBUS_THRESHOLD_ON_CHANGE_GREATER_THAN_OR_EQUAL:
-                        if(cNew >= 0 && cOld < 0)
-                            result = 1;
-                        else if(cNew < 0 && cOld >= 0)
-                            result = 0;
-                        break;
-                    case RBUS_THRESHOLD_ON_CHANGE_LESS_THAN:
-                        if(cNew < 0 && cOld >= 0)
-                            result = 1;
-                        else if(cNew >= 0 && cOld < 0)
-                            result = 0;
-                        break;
-                    case RBUS_THRESHOLD_ON_CHANGE_LESS_THAN_OR_EQUAL:
-                        if(cNew <= 0 && cOld > 0)
-                            result = 1;
-                        else if(cNew > 0 && cOld <= 0)
-                            result = 0;
-                        break;
-                    case RBUS_THRESHOLD_ON_CHANGE_EQUAL:
-                        if(cNew == 0 && cOld != 0)
-                            result = 1;
-                        else if(cNew != 0 && cOld == 0)
-                            result = 0;
-                        break;
-                    case RBUS_THRESHOLD_ON_CHANGE_NOT_EQUAL:
-                        if(cNew != 0 && cOld == 0)
-                            result = 1;
-                        else if(cNew == 0 && cOld != 0)
-                            result = 0;
-                        break;
-                    default: 
-                        break;
-                    }
-
-                    if(result != -1)
-                    {
-                        /*set 'filter' to true/false implying that either the filter has started or stopped matching*/
-                        rbusValue_t val;
-                        rbusValue_Init(&val);
-                        rbusValue_SetBoolean(val, result);
-                        rbusObject_SetValue(eventData->data, "filter", val);
-                        rbusValue_Release(val);
-                    }
-                    else
-                    {
-                        publish = false;
-                    }
+                    /*set 'filter' to true/false implying that either the filter has started or stopped matching*/
+                    rbusValue_t filterResult = NULL;
+                    rbusValue_Init(&filterResult);
+                    rbusValue_SetBoolean(filterResult, newResult != 0);
+                    rbusObject_SetValue(eventData->data, "filter", filterResult);
+                    rbusValue_Release(filterResult);                    
                 }
-            }
-            else
-            {
-                /* If autoPublish is false then a provider should be the only one calling us.
-                   Its expected that the provider will apply any filter so if the provider has
-                   set the filter then we publish to the subscriber owning that filter.
-                   If the provider set the filter NULL then we publish to all subscribers. */
-                if(eventData->filter && eventData->filter != subscription->filter)
+                else
                 {
-                    publish = false;
+                    publish =  false;
                 }
             }
         }
-#endif
+
         if(publish)
         {
             rbusMessage msg;
-
             rbusMessage_Init(&msg);
-            rbusEvent_appendToMessage(eventData, msg);
 
-            RBUSLOG_INFO("rbusEvent_Publish: publising event %s to listener %s", subscription->eventName, subscription->listener);
+            rbusEventData_appendToMessage(eventData, subscription->filter, subscription->componentId, msg);
+
+            RBUSLOG_INFO("rbusEvent_Publish: publishing event %s to listener %s", subscription->eventName, subscription->listener);
+
             err = rbus_publishSubscriberEvent(
                 handleInfo->componentName,  
                 subscription->eventName/*use the same eventName the consumer subscribed with; not event instance name eventData->name*/, 
@@ -3746,9 +3777,9 @@ rbusError_t  rbusEvent_Publish(
             {
                 if(errOut == RTMESSAGE_BUS_SUCCESS)
                     errOut = err;
-                RBUSLOG_INFO("rbusEvent_Publish faild: rbus_publishSubscriberEvent return error %d", err);
+                RBUSLOG_INFO("rbusEvent_Publish failed: rbus_publishSubscriberEvent return error %d", err);
             }
-        }
+        }   
 
         rtListItem_GetNext(listItem, &listItem);
     }

@@ -40,18 +40,24 @@ struct _rbusSubscriptions
 static void rbusSubscriptions_loadCache(rbusSubscriptions_t subscriptions);
 static void rbusSubscriptions_saveCache(rbusSubscriptions_t subscriptions);
 
-int subscribeHandlerImpl(rbusHandle_t handle, bool added, elementNode* el, char const* eventName, char const* listener, int32_t interval, int32_t duration, rbusFilter_t filter);
+int subscribeHandlerImpl(rbusHandle_t handle, bool added, elementNode* el, char const* eventName, char const* listener, int32_t componentId, int32_t interval, int32_t duration, rbusFilter_t filter);
 
-
-static int subscriptionKeyCompare(rbusSubscription_t* subscription, char const* listener, char const* eventName, rbusFilter_t filter)
+static int subscriptionKeyCompare(rbusSubscription_t* subscription, char const* listener, int32_t componentId,  char const* eventName, rbusFilter_t filter)
 {
     int rc;
     if((rc = strcmp(subscription->listener, listener)) == 0)
     {
-        if((rc = strcmp(subscription->eventName, eventName)) == 0)
+        if(subscription->componentId == componentId)
         {
-            rc = rbusFilter_Compare(subscription->filter, filter);
+            if((rc = strcmp(subscription->eventName, eventName)) == 0)
+            {
+                rc = rbusFilter_Compare(subscription->filter, filter);
+            }
         }
+        else if(subscription->componentId < componentId)
+            rc = -1;
+        else
+            rc = 1;
     }
     return rc;
 }
@@ -103,7 +109,7 @@ void rbusSubscriptions_destroy(rbusSubscriptions_t subscriptions)
 static void rbusSubscriptions_onSubscriptionCreated(rbusSubscription_t* sub, elementNode* node);
 
 /*add a new subscription*/
-rbusSubscription_t* rbusSubscriptions_addSubscription(rbusSubscriptions_t subscriptions, char const* listener, char const* eventName, rbusFilter_t filter, int32_t interval, int32_t duration, bool autoPublish, elementNode* registryElem)
+rbusSubscription_t* rbusSubscriptions_addSubscription(rbusSubscriptions_t subscriptions, char const* listener, char const* eventName, int32_t componentId, rbusFilter_t filter, int32_t interval, int32_t duration, bool autoPublish, elementNode* registryElem)
 {
     rbusSubscription_t* sub;
     TokenChain* tokens;
@@ -121,6 +127,7 @@ rbusSubscription_t* rbusSubscriptions_addSubscription(rbusSubscriptions_t subscr
 
     sub->listener = strdup(listener);
     sub->eventName = strdup(eventName);
+    sub->componentId = componentId;
     sub->filter = filter;
     if(sub->filter)
         rbusFilter_Retain(sub->filter);
@@ -140,7 +147,7 @@ rbusSubscription_t* rbusSubscriptions_addSubscription(rbusSubscriptions_t subscr
 }
 
 /*get an existing subscription by searching for its unique key [eventName, listener, filter]*/
-rbusSubscription_t* rbusSubscriptions_getSubscription(rbusSubscriptions_t subscriptions, char const* listener, char const* eventName, rbusFilter_t filter)
+rbusSubscription_t* rbusSubscriptions_getSubscription(rbusSubscriptions_t subscriptions, char const* listener, char const* eventName, int32_t componentId, rbusFilter_t filter)
 {
     rtListItem item;
     rbusSubscription_t* sub;
@@ -155,9 +162,9 @@ rbusSubscription_t* rbusSubscriptions_getSubscription(rbusSubscriptions_t subscr
 
         RBUSLOG_DEBUG("%s: comparing to %s %s", __FUNCTION__, sub->listener, sub->eventName);
 
-        if(subscriptionKeyCompare(sub, listener, eventName, filter) == 0)
+        if(subscriptionKeyCompare(sub, listener, componentId, eventName, filter) == 0)
         {
-            RBUSLOG_DEBUG("%s: found sub %s %s", __FUNCTION__, listener, eventName);
+            RBUSLOG_DEBUG("%s: found sub %s %s %d", __FUNCTION__, listener, eventName, componentId);
             return sub;
         }
         rtListItem_GetNext(item, &item);
@@ -319,7 +326,7 @@ void rbusSubscriptions_onElementDeleted(rbusSubscriptions_t subscriptions, eleme
                     /* RDKB-38389 : Removing the instance of the row to be removed from the subscriptions->subList linked list */
                     if(val)
                     {
-                        subscription = rbusSubscriptions_getSubscription(subscriptions, sub->listener, sub->eventName, sub->filter);
+                        subscription = rbusSubscriptions_getSubscription(subscriptions, sub->listener, sub->eventName, sub->componentId, sub->filter);
                         if(!subscription)
                         {
                             RBUSLOG_INFO("unsubscribing from event which isn't currectly subscribed to event=%s listener=%s", sub->eventName, sub->listener);
@@ -469,6 +476,12 @@ static void rbusSubscriptions_loadCache(rbusSubscriptions_t subscriptions)
         memcpy(sub->eventName, buff->data + buff->posRead, length);
         buff->posRead += length;
 
+        //read componentId
+        if(rbusBuffer_ReadUInt16(buff, &type) < 0) goto remove_bad_file;
+        if(rbusBuffer_ReadUInt16(buff, &length) < 0) goto remove_bad_file;
+        if(type != RBUS_INT32 && length != sizeof(int32_t)) goto remove_bad_file;
+        if(rbusBuffer_ReadInt32(buff, &sub->componentId) < 0) goto remove_bad_file;
+
         //read interval
         if(rbusBuffer_ReadUInt16(buff, &type) < 0) goto remove_bad_file;
         if(rbusBuffer_ReadUInt16(buff, &length) < 0) goto remove_bad_file;
@@ -584,6 +597,7 @@ static void rbusSubscriptions_saveCache(rbusSubscriptions_t subscriptions)
         rtListItem_GetData(item, (void**)&sub);
         rbusBuffer_WriteStringTLV(buff, sub->listener, strlen(sub->listener)+1);
         rbusBuffer_WriteStringTLV(buff, sub->eventName, strlen(sub->eventName)+1);
+        rbusBuffer_WriteInt32TLV(buff, sub->componentId);
         rbusBuffer_WriteInt32TLV(buff, sub->interval);
         rbusBuffer_WriteInt32TLV(buff, sub->duration);
         rbusBuffer_WriteInt32TLV(buff, sub->autoPublish);
@@ -623,7 +637,7 @@ void rbusSubscriptions_resubscribeCache(rbusHandle_t handle, rbusSubscriptions_t
             rbusError_t err;
             RBUSLOG_INFO("%s: subscribing %s %s", __FUNCTION__, sub->eventName, sub->listener);
             rtListItem_GetNext(item, &next);
-            err = subscribeHandlerImpl(handle, true, el, sub->eventName, sub->listener, sub->interval, sub->duration, sub->filter);
+            err = subscribeHandlerImpl(handle, true, el, sub->eventName, sub->listener, sub->componentId, sub->interval, sub->duration, sub->filter);
             /*TODO figure out what to do if we get an error resubscribing
               It's conceivable that a provider might not like the sub due to some state change between this and the previous process run
              */
@@ -660,7 +674,7 @@ void rbusSubscriptions_handleClientDisconnect(rbusHandle_t handle, rbusSubscript
             el = retrieveInstanceElement(handleInfo->elementRoot, sub->eventName);
             if(el)
             {
-                subscribeHandlerImpl(handle, false, sub->element, sub->eventName, sub->listener, 0, 0, 0);
+                subscribeHandlerImpl(handle, false, sub->element, sub->eventName, sub->listener, sub->componentId, 0, 0, 0);
             }
             else
             {

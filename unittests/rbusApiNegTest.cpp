@@ -808,7 +808,7 @@ TEST(rbusPulishNegTest, test2)
 {
     rbusHandle_t handle=NULL;
     int rc = RBUS_ERROR_SUCCESS;
-    rbusEvent_t event;
+    rbusEvent_t event = {0};
     rbusObject_t data;
     rbusObject_Init(&data, NULL);
     event.name = "Device.Provider1";

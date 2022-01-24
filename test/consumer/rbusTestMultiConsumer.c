@@ -101,7 +101,7 @@ int main(int argc, char *argv[])
     int i;
     int loopFor = 8;
     int eventCount = 0;
-
+    rbus_setLogLevel(RBUS_LOG_DEBUG);
     printf("consumer: opening 5 handles\n");
     for(i = 0; i < 5; ++i)
     {
@@ -207,8 +207,8 @@ int main(int argc, char *argv[])
         }
     }
 
-    printf("consumer: unsubscribing 5 handles\n");
-    for(i = 0; i < 5; ++i)
+    printf("consumer: unsubscribing 4 handles\n");
+    for(i = 1; i < 5; ++i)
     {
         if(handles[i])
         {

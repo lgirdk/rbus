@@ -36,6 +36,7 @@ typedef struct _rbusSubscription
 {
     char* listener;             /* the subscriber's address to publish to*/
     char* eventName;            /* the event name subscribed to e.g. Device.WiFi.AccessPoint.1.AssociatedDevice.*.SignalStrength */
+    int32_t componentId;     /* the id known by the subscriber and unique per listener/process */
     rbusFilter_t filter;        /* optional filter */
     int32_t interval;           /* optional interval */
     int32_t duration;           /* optional duration */
@@ -54,10 +55,10 @@ void rbusSubscriptions_create(rbusSubscriptions_t* subscriptions, rbusHandle_t h
 void rbusSubscriptions_destroy(rbusSubscriptions_t subscriptions);
 
 /*add a new subscription with unique key [listener, eventName, filter] and the corresponding*/
-rbusSubscription_t* rbusSubscriptions_addSubscription(rbusSubscriptions_t subscriptions, char const* listener, char const* eventName, rbusFilter_t filter, int32_t interval, int32_t duration, bool autoPublish, elementNode* registryElem);
+rbusSubscription_t* rbusSubscriptions_addSubscription(rbusSubscriptions_t subscriptions, char const* listener, char const* eventName, int32_t componentId, rbusFilter_t filter, int32_t interval, int32_t duration, bool autoPublish, elementNode* registryElem);
 
 /*get an existing subscription by searching for its unique key [listener, eventName, filter]*/
-rbusSubscription_t* rbusSubscriptions_getSubscription(rbusSubscriptions_t subscriptions, char const* listener, char const* eventName, rbusFilter_t filter);
+rbusSubscription_t* rbusSubscriptions_getSubscription(rbusSubscriptions_t subscriptions, char const* listener, char const* eventName, int32_t componentId, rbusFilter_t filter);
 
 /*remove an existing subscription*/
 void rbusSubscriptions_removeSubscription(rbusSubscriptions_t subscriptions, rbusSubscription_t* sub);

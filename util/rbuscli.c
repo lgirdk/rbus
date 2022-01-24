@@ -1496,7 +1496,7 @@ void validate_and_execute_subscribe_cmd (int argc, char *argv[], bool add)
 void validate_and_execute_publish_command(int argc, char *argv[])
 {
     rbusError_t rc;
-    rbusEvent_t event;
+    rbusEvent_t event = {0};
     rbusObject_t data;
     rbusValue_t value;
 

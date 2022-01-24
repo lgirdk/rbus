@@ -262,7 +262,7 @@ int main(int argc, char *argv[])
                 rbusObject_Init(&data, NULL);
                 rbusObject_SetValue(data, "value", value);
 
-                rbusEvent_t event;
+                rbusEvent_t event = {0};
                 event.name = dataElements[i][1].name;
                 event.data = data;
                 event.type = RBUS_EVENT_GENERAL;

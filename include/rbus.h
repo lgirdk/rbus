@@ -138,7 +138,8 @@ typedef enum _rbusError
     RBUS_ERROR_TIMEOUT,                         /**< The operation timedout   */
     RBUS_ERROR_ASYNC_RESPONSE,                  /**< The method request will be handle asynchronously by provider */
     RBUS_ERROR_INVALID_METHOD,                  /**< Invalid Method           */
-    RBUS_ERROR_NOSUBSCRIBERS                    /**< No subscribers present   */
+    RBUS_ERROR_NOSUBSCRIBERS,                   /**< No subscribers present   */
+    RBUS_ERROR_SUBSCRIPTION_ALREADY_EXIST        /**< The subscription already exists*/
 } rbusError_t;
 
 
@@ -234,7 +235,6 @@ typedef struct
     char const*     name;       /**< Fully qualified event name */
     rbusEventType_t type;       /**< The type of event */
     rbusObject_t    data;       /**< The data for the event */
-    rbusFilter_t  filter;       /**< Optional filter that was applied by provider*/
 } rbusEvent_t;
 
 typedef struct _rbusEventSubscription rbusEventSubscription_t;

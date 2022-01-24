@@ -90,10 +90,16 @@ static IntResult byResults[3] = {
     { 1000, 0, -1, "TestConsumer", 0, 0, 0, "", -1}, { 2000, 1000, -1, "TestConsumer", 0, 0, 0, "", -1 }, { 3000, 2000, -1, "TestConsumer", 0, 0, 0, "", -1 }
 };
 
+static IntResult noAutoPubResults[2][2] = {
+    {{ 5, 4, 0, "TestProvider", 0, 0, 0, "", -1 }, {4, 5, 1, "TestProvider", 0, 0, 0, "", -1 }}, 
+    {{ 6, 5, 1, "TestProvider", 0, 0, 0, "", -1 }, {5, 6, 0, "TestProvider", 0, 0, 0, "", -1 }}
+};
+
 Counter simpleCounter = {3,0};
 Counter intCounter[6] = {{2,0}, {2,0}, {2,0}, {2,0}, {4,0}, {4,0}};
 Counter strCounter[6] = {{2,0}, {2,0}, {2,0}, {2,0}, {4,0}, {4,0}};
 Counter byCounter = {3,0};
+Counter noAutoPubCounter[2] = {{2,0},{2,0}};
 
 void rbusValueChange_SetPollingPeriod(int seconds);
 
@@ -223,6 +229,52 @@ static void byVCHandler(
     byResults[count].filterAct = rbusObject_GetValue(event->data, "filter") ? rbusValue_GetBoolean(rbusObject_GetValue(event->data, "filter")) : -1;
     if(byComponent)
         strncpy(byResults[count].byAct, byComponent, 64);
+}
+
+static void noAutoPubHandler(rbusHandle_t handle,
+    rbusEvent_t const* event,
+    rbusEventSubscription_t* subscription,
+    int idx)
+{
+    (void)handle;
+    (void)subscription;
+    int count = noAutoPubCounter[idx].actual;    
+    rbusValue_t byVal;
+    const char* byComponent = NULL;
+
+    if(++noAutoPubCounter[idx].actual > noAutoPubCounter[idx].expected)
+    {
+        printf("test_ValueChange_noAutoPubHandlerHandler Actual events exceeds expected\n");
+        return;
+    }
+
+    byVal = rbusObject_GetValue(event->data, "by");
+    if(byVal)
+        byComponent = rbusValue_GetString(byVal, NULL);
+
+    noAutoPubResults[idx][count].status = 1;
+    noAutoPubResults[idx][count].newValAct = rbusObject_GetValue(event->data, "value") ? rbusValue_GetInt32(rbusObject_GetValue(event->data, "value")) : -1;
+    noAutoPubResults[idx][count].oldValAct = rbusObject_GetValue(event->data, "oldValue") ? rbusValue_GetInt32(rbusObject_GetValue(event->data, "oldValue")) : -1;
+    noAutoPubResults[idx][count].filterAct = rbusObject_GetValue(event->data, "filter") ? rbusValue_GetBoolean(rbusObject_GetValue(event->data, "filter")) : -1;
+    if(byComponent)
+        strncpy(noAutoPubResults[idx][count].byAct, byComponent, 64);
+}
+static void noAutoPub1Handler(
+    rbusHandle_t handle,
+    rbusEvent_t const* event,
+    rbusEventSubscription_t* subscription)
+{
+    PRINT_TEST_EVENT("test_ValueChange_noAutoPub1Handler", event, subscription);
+    noAutoPubHandler(handle, event, subscription, 0);
+}
+
+static void noAutoPub2Handler(
+    rbusHandle_t handle,
+    rbusEvent_t const* event,
+    rbusEventSubscription_t* subscription)
+{
+    PRINT_TEST_EVENT("test_ValueChange_noAutoPub2Handler", event, subscription);
+    noAutoPubHandler(handle, event, subscription, 1);
 }
 
 void testSimpleValueChange(rbusHandle_t handle)
@@ -460,18 +512,91 @@ void testByValueChange(rbusHandle_t handle)
     }    
 }
 
+void testNoAutoPubValueChange(rbusHandle_t handle)
+{
+    int rc;
+    int i;
+    rbusValue_t intVal;
+    rbusFilter_t filter[2];
+    int maxWait;
+    int needMore;
+
+    rbusValue_Init(&intVal);
+    rbusValue_SetInt32(intVal, 5);
+
+    rbusFilter_InitRelation(&filter[0], RBUS_FILTER_OPERATOR_LESS_THAN, intVal);
+    rbusFilter_InitRelation(&filter[1], RBUS_FILTER_OPERATOR_GREATER_THAN, intVal);
+
+    rbusEventSubscription_t subscription[2] = {
+        {"Device.TestProvider.NoAutoPubInt", filter[0], 0, 0, noAutoPub1Handler, NULL, NULL, NULL},
+        {"Device.TestProvider.NoAutoPubInt", filter[1], 0, 0, noAutoPub2Handler, NULL, NULL, NULL}
+    };
+
+    rc = rbusEvent_SubscribeEx(handle, subscription, 2, 0);
+
+    rbusValue_Release(intVal);
+    for(i = 0; i < 2; ++i)
+        rbusFilter_Release(filter[i]);
+
+    TALLY(rc == RBUS_ERROR_SUCCESS);
+    printf("%s _test_NoAutoPubValueChange rbusEvent_SubscribeEx rc=%d\n", rc == RBUS_ERROR_SUCCESS ? "PASS":"FAIL", rc);   
+
+    maxWait = rc == RBUS_ERROR_SUCCESS ? 48 : 0;
+    needMore = 1;
+    while(needMore && maxWait > 0)
+    {
+        sleep(1);
+        maxWait--;
+        needMore = 0;
+        for(i = 0; i < 2; ++i)
+        {
+            if(noAutoPubCounter[i].actual < noAutoPubCounter[i].expected)
+                needMore = 1;
+        }
+    }
+
+    for(i = 0; i < 2; ++i)
+    {
+        int j;
+        int pass;
+        
+        pass  = noAutoPubCounter[i].actual >= noAutoPubCounter[i].expected;
+        TALLY(pass);
+        printf("%s _test_NoAutoPubValueChange Device.TestProvider.VCParamInt%d expected count=%d actual count=%d\n", pass ? "PASS" : "FAIL", i, noAutoPubCounter[i].expected, noAutoPubCounter[i].actual);
+        for(j = 0; j < noAutoPubCounter[i].expected; ++j)
+        {
+            int pass = 
+                noAutoPubResults[i][j].newValAct == noAutoPubResults[i][j].newValExp &&
+                noAutoPubResults[i][j].oldValAct == noAutoPubResults[i][j].oldValExp &&
+                noAutoPubResults[i][j].filterAct == noAutoPubResults[i][j].filterExp &&
+                !strcmp(noAutoPubResults[i][j].byAct, noAutoPubResults[i][j].byExp);
+            TALLY(pass);
+            printf("%s _test_NoAutoPubValueChange Device.TestProvider.VCParamInt%d expect=[value:%d oldValue:%d filter:%d by:%s] actual=[value:%d oldValue:%d filter:%d by:%s]\n", 
+                    pass ? "PASS" : "FAIL", 
+                    i,
+                    noAutoPubResults[i][j].newValExp, 
+                    noAutoPubResults[i][j].oldValExp, 
+                    noAutoPubResults[i][j].filterExp,
+                    noAutoPubResults[i][j].byExp,
+                    noAutoPubResults[i][j].newValAct, 
+                    noAutoPubResults[i][j].oldValAct, 
+                    noAutoPubResults[i][j].filterAct,
+                    noAutoPubResults[i][j].byAct);
+        }
+    }
+
+    rc = rbusEvent_UnsubscribeEx(handle, subscription, 2);
+    TALLY(rc == RBUS_ERROR_SUCCESS);
+    printf("%s _test_NoAutoPubValueChange rbusEvent_UnsubscribeEx rc=%d\n", rc == RBUS_ERROR_SUCCESS ? "PASS":"FAIL", rc);    
+}
+
 void testValueChange(rbusHandle_t handle, int* countPass, int* countFail)
 {
     rbusConfig_Get()->valueChangePeriod = 1;
-#if 1
     testSimpleValueChange(handle);
-#endif
-#if 1
     testTypesValueChange(handle);
-#endif
-#if 1
     testByValueChange(handle);
-#endif
+    testNoAutoPubValueChange(handle);
     *countPass = gCountPass;
     *countFail = gCountFail;
     PRINT_TEST_RESULTS("test_ValueChange");

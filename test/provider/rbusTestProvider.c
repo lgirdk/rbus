@@ -42,6 +42,7 @@ rbusValue_t gBigString = NULL;
 rbusValue_t gBigBytes = NULL;
 int32_t gByValue = 0;
 bool gEventTableSub[10] = {false};
+int gEnableNoAutoPubEvent = 0;
 /*
  * Generic Data Model Tree Structure
  */
@@ -891,6 +892,26 @@ rbusError_t setVCByHandler(rbusHandle_t handle, rbusProperty_t property, rbusSet
     return RBUS_ERROR_SUCCESS;
 }
 
+rbusError_t subNoAutoPubIntHandler(rbusHandle_t handle, rbusEventSubAction_t action, const char* eventName, rbusFilter_t filter, int32_t interval, bool* autoPublish)
+{
+    (void)handle;
+    (void)eventName;
+    (void)filter;
+    (void)interval;
+    (void)autoPublish;
+
+    printf("subNoAutoPubIntHandler\n");
+
+    *autoPublish = false;
+    if(action == RBUS_EVENT_ACTION_SUBSCRIBE)
+        gEnableNoAutoPubEvent++;
+    else 
+        gEnableNoAutoPubEvent--;
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+
 
 typedef struct MethodData
 {
@@ -1371,7 +1392,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    #define numDataElems 54
+    #define numDataElems 55
 
     rbusDataElement_t dataElement[numDataElems] = {
         {"Device.%s.Event1!", RBUS_ELEMENT_TYPE_EVENT, {NULL,NULL,NULL,NULL, eventSubHandler, NULL}},
@@ -1392,6 +1413,7 @@ int main(int argc, char *argv[])
         {"Device.%s.VCParamStr4", RBUS_ELEMENT_TYPE_PROPERTY, {getVCStrHandler,NULL,NULL,NULL,NULL, NULL}},
         {"Device.%s.VCParamStr5", RBUS_ELEMENT_TYPE_PROPERTY, {getVCStrHandler,NULL,NULL,NULL,NULL, NULL}},
         {"Device.%s.VCParamBy",   RBUS_ELEMENT_TYPE_PROPERTY, {getVCByHandler,setVCByHandler,NULL,NULL,NULL, NULL}},
+        {"Device.%s.NoAutoPubInt", RBUS_ELEMENT_TYPE_PROPERTY, {NULL,NULL,NULL,NULL,subNoAutoPubIntHandler, NULL}},
         {"Device.%s.Table1.{i}.", RBUS_ELEMENT_TYPE_TABLE, {NULL, NULL, tableAddRowHandler, tableRemoveRowHandler, eventSubHandler, NULL}},
         {"Device.%s.Table1.{i}.Table2.{i}.", RBUS_ELEMENT_TYPE_TABLE, {NULL, NULL, tableAddRowHandler, tableRemoveRowHandler, eventSubHandler, NULL}},
         {"Device.%s.Table1.{i}.Table2.{i}.Table3.{i}.", RBUS_ELEMENT_TYPE_TABLE, {NULL, NULL, tableAddRowHandler, tableRemoveRowHandler, eventSubHandler, NULL}},
@@ -1545,7 +1567,7 @@ int main(int argc, char *argv[])
                 rbusObject_SetValue(data, "buffer", bufferVal);
                 rbusObject_SetValue(data, "index", indexVal);
 
-                rbusEvent_t event;
+                rbusEvent_t event = {0};
                 event.name = dataElement[j].name;
                 event.data = data;
                 event.type = RBUS_EVENT_GENERAL;
@@ -1584,7 +1606,7 @@ int main(int argc, char *argv[])
                 rbusObject_Init(&data, NULL);
                 rbusObject_SetValue(data, "buffer", bufferVal);
 
-                rbusEvent_t event;
+                rbusEvent_t event = {0};
                 event.name = getName("Device.%s.ProviderNotFoundEvent1!");
                 event.data = data;
                 event.type = RBUS_EVENT_GENERAL;
@@ -1629,7 +1651,7 @@ int main(int argc, char *argv[])
                 rbusObject_SetValue(data, "data", val);
 
                 sprintf(buff, "%s.%d.Event", getName("Device.%s.EventsTable"), i); 
-                rbusEvent_t event;
+                rbusEvent_t event = {0};
                 event.name = buff;
                 event.data = data;
                 event.type = RBUS_EVENT_GENERAL;
@@ -1642,6 +1664,50 @@ int main(int argc, char *argv[])
                 if(rc != RBUS_ERROR_SUCCESS)
                     printf("provider: rbusEvent_Publish %s failed: %d\n", event.name, rc);
             }
+        }
+
+        if(gEnableNoAutoPubEvent > 0)
+        {
+            rbusEvent_t event = {0};
+            rbusObject_t dataObj = NULL;
+            rbusValue_t newVal = NULL;
+            rbusValue_t oldVal = NULL;
+            rbusValue_t byVal = NULL;
+            
+            /*will cycle between 3 and 7*/
+            static int32_t val = 3;
+            static int32_t dir = 1;
+
+            rbusObject_Init(&dataObj, NULL);
+            rbusValue_Init(&newVal);
+            rbusValue_Init(&oldVal);
+            rbusValue_Init(&byVal);
+            
+            rbusValue_SetInt32(oldVal, val);
+
+            val += dir;
+            if(val == 3)
+                dir = 1;
+            else if(val == 7)
+                dir = -1;
+
+            rbusValue_SetInt32(newVal, val);
+            rbusValue_SetString(byVal, componentName);
+
+            rbusObject_SetValue(dataObj, "value", newVal);
+            rbusObject_SetValue(dataObj, "oldValue", oldVal);
+            rbusObject_SetValue(dataObj, "by", byVal);
+
+            event.name = strdup(getName("Device.%s.NoAutoPubInt"));
+            event.data = dataObj;
+            event.type = RBUS_EVENT_VALUE_CHANGED;
+            rc = rbusEvent_Publish(handle, &event);
+
+            rbusValue_Release(newVal);
+            rbusValue_Release(oldVal);
+            rbusValue_Release(byVal);
+            rbusObject_Release(dataObj);
+            free((char*)event.name);
         }
     }
 

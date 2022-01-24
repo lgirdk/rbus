@@ -142,7 +142,7 @@ int main(int argc, char *argv[])
 
         if(subscribed1)
         {
-            rbusEvent_t event;
+            rbusEvent_t event = {0};
             rbusObject_t data;
             rbusValue_t value;
 
@@ -168,7 +168,7 @@ int main(int argc, char *argv[])
         }
         if(subscribed2)
         {
-            rbusEvent_t event;
+            rbusEvent_t event = {0};
             rbusObject_t data;
             rbusObject_t subobj;
 
