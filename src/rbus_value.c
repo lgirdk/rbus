@@ -1025,7 +1025,7 @@ bool rbusValue_SetFromString(rbusValue_t value, rbusValueType_t type, const char
     errno = 0;
     char *endptr = NULL;
     char sign = *pStringInput;
-    unsigned int tmp_strlen = strlen(pStringInput);
+    unsigned int tmp_strlen = 0;
 
     if (pStringInput == NULL)
         return false;
@@ -1036,9 +1036,11 @@ bool rbusValue_SetFromString(rbusValue_t value, rbusValueType_t type, const char
         rbusValue_SetString(value, pStringInput);
         break;
     case RBUS_BYTES:
+        tmp_strlen= strlen(pStringInput);
         rbusValue_SetBytes(value,(uint8_t const*)pStringInput,tmp_strlen);
         break;
     case RBUS_BOOLEAN:
+        tmp_strlen = strlen(pStringInput);
         if (((0 == strncasecmp("true", pStringInput, 4)) && (tmp_strlen == 4)) || ((0 == strncasecmp("1", pStringInput, 1)) && (tmp_strlen == 1)))
             tmpB = true;
         else if (((0 == strncasecmp("false", pStringInput, 5)) && (tmp_strlen == 5)) || ((0 == strncasecmp("0", pStringInput, 1)) && (tmp_strlen == 1)))
