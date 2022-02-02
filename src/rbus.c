@@ -1961,11 +1961,11 @@ rbusError_t rbus_close(rbusHandle_t handle)
     rbus_error_t err = RTMESSAGE_BUS_SUCCESS;
     struct _rbusHandle* handleInfo = (struct _rbusHandle*)handle;
 
-    RBUSLOG_INFO("%s: %s", __FUNCTION__, handleInfo->componentName);
-
     VERIFY_NULL(handle);
 
     RBUSLOG_DEBUG("%s: %s", __FUNCTION__, handleInfo->componentName);
+
+    RBUSLOG_INFO("%s: %s", __FUNCTION__, handleInfo->componentName);
 
     if(handleInfo->eventSubs)
     {
