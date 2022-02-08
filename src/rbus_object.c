@@ -397,7 +397,8 @@ void rbusObject_fwrite(rbusObject_t obj, int depth, FILE* fout)
         fprintf(fout, " ");
     fprintf(fout, "rbusObject name=%s\n\r", rbusObject_GetName(obj));
     prop = rbusObject_GetProperties(obj);
-    rbusProperty_fwrite(prop, depth+1, fout);
+    if(prop)
+        rbusProperty_fwrite(prop, depth+1, fout);
     child = rbusObject_GetChildren(obj);
     while(child)
     {
