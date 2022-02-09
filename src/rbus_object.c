@@ -395,7 +395,7 @@ void rbusObject_fwrite(rbusObject_t obj, int depth, FILE* fout)
     rbusProperty_t prop;
     for(i=0; i<depth; ++i)
         fprintf(fout, " ");
-    fprintf(fout, "rbusObject name=%s\n\r", rbusObject_GetName(obj));
+    fprintf(fout, "rbusObject name=%s\n", rbusObject_GetName(obj));
     prop = rbusObject_GetProperties(obj);
     if(prop)
         rbusProperty_fwrite(prop, depth+1, fout);
