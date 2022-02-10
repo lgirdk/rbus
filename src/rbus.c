@@ -2013,20 +2013,19 @@ rbusError_t rbus_regDataElements(
             rbusSubscriptions_create(&handleInfo->subscriptions, handle, handleInfo->componentName, handleInfo->elementRoot, rbusConfig_Get()->tmpDir);
         }
 
-        elementNode* node;
-        if((node = insertElement(handleInfo->elementRoot, &elements[i])) == NULL)
+        if((err = rbus_addElement(handleInfo->componentName, name)) != RTMESSAGE_BUS_SUCCESS)
         {
-            RBUSLOG_ERROR("<%s>: failed to insert element [%s]!!", __FUNCTION__, name);
-            rc = RBUS_ERROR_OUT_OF_RESOURCES;
+            RBUSLOG_ERROR("<%s>: failed to add element with core [%s] err=%d!!", __FUNCTION__, name, err);
+            rc = RBUS_ERROR_ELEMENT_NAME_DUPLICATE;
             break;
         }
         else
         {
-            if((err = rbus_addElement(handleInfo->componentName, name)) != RTMESSAGE_BUS_SUCCESS)
+            elementNode* node;
+            if((node = insertElement(handleInfo->elementRoot, &elements[i])) == NULL)
             {
-                RBUSLOG_ERROR("<%s>: failed to add element with core [%s] err=%d!!", __FUNCTION__, name, err);
-                removeElement(node);
-                rc = RBUS_ERROR_ELEMENT_NAME_DUPLICATE;
+                RBUSLOG_ERROR("<%s>: failed to insert element [%s]!!", __FUNCTION__, name);
+                rc = RBUS_ERROR_OUT_OF_RESOURCES;
                 break;
             }
             else
