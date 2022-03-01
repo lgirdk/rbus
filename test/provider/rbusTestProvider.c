@@ -30,6 +30,7 @@
 #include <rbus.h>
 #include <rtList.h>
 #include <rtLog.h>
+#include <rtMemory.h>
 #include "../common/runningParamHelper.h"
 #include "../common/testValueHelper.h"
 
@@ -98,10 +99,11 @@ Node* getNode(Node* startNode, char const* fullName)
 {
     char* tokName;
     char* token;
+    char* saveptr = NULL;
     Node* node = NULL;
 
     tokName = strdup(fullName);
-    token = strtok(tokName, ".");
+    token = strtok_r(tokName, ".", &saveptr);
 
     while(token)
     {
@@ -176,7 +178,7 @@ Node* getNode(Node* startNode, char const* fullName)
                 return NULL;
             }
         }
-        token = strtok(NULL, ".");
+        token = strtok_r(NULL, ".", &saveptr);
     }
     free(tokName);
     return node;    
@@ -259,7 +261,7 @@ Node* createNode(Node* parent, rbusElementType_t type, char const* name)
         break;
     }
 
-    node = calloc(1, nodeSize);
+    node = rt_calloc(1, nodeSize);
 
     node->type = type;
 
@@ -1011,7 +1013,7 @@ static rbusError_t methodHandler(rbusHandle_t handle, char const* methodName, rb
     if(strstr(methodName, "MethodAsync2()"))
     {
         pthread_t pid;
-        MethodData* data = malloc(sizeof(MethodData));
+        MethodData* data = rt_malloc(sizeof(MethodData));
         data->asyncHandle = asyncHandle;
         data->inParams = inParams;
         rbusObject_Retain(inParams);
@@ -1191,7 +1193,7 @@ static void ppAddParam(rbusProperty_t list, const char* name)
     rbusValue_Init(&value);
     rbusValue_SetString(value, name);
     rbusProperty_Init(&param, name, value);
-    rbusProperty_PushBack(list, param);
+    rbusProperty_Append(list, param);
     rbusProperty_Release(param);
     rbusValue_Release(value);
 }
@@ -1470,7 +1472,7 @@ int main(int argc, char *argv[])
     rbusValue_Init(&gBigBytes);
     {
         const int BIGSIZE = 1000;
-        char* val = malloc(BIGSIZE);
+        char* val = rt_malloc(BIGSIZE);
         int i = 0;
         for(i = 0; i < BIGSIZE-1; ++i)
             val[i] = (char)(32 + (i % 96));
@@ -1506,14 +1508,14 @@ int main(int argc, char *argv[])
 
     /*for partial path testing add exactly 2, 1, 3 rows as follows*/
     /*add 2 rows*/
-    rbusTable_registerRow(handle, getName("Device.%s.PartialPath1"), NULL, ppTableInstNums[0]++);
-    rbusTable_registerRow(handle, getName("Device.%s.PartialPath1"), NULL, ppTableInstNums[0]++);
+    rbusTable_registerRow(handle, getName("Device.%s.PartialPath1"), ppTableInstNums[0]++, NULL);
+    rbusTable_registerRow(handle, getName("Device.%s.PartialPath1"), ppTableInstNums[0]++, NULL);
     /*add 1 row*/
-    rbusTable_registerRow(handle, getName("Device.%s.PartialPath1.1.SubTable"), NULL, ppTableInstNums[1]++);
+    rbusTable_registerRow(handle, getName("Device.%s.PartialPath1.1.SubTable"), ppTableInstNums[1]++, NULL);
     /*add 3 row2*/
-    rbusTable_registerRow(handle, getName("Device.%s.PartialPath1.2.SubTable"), NULL, ppTableInstNums[2]++);
-    rbusTable_registerRow(handle, getName("Device.%s.PartialPath1.2.SubTable"), NULL, ppTableInstNums[2]++);
-    rbusTable_registerRow(handle, getName("Device.%s.PartialPath1.2.SubTable"), NULL, ppTableInstNums[2]++);
+    rbusTable_registerRow(handle, getName("Device.%s.PartialPath1.2.SubTable"), ppTableInstNums[2]++, NULL);
+    rbusTable_registerRow(handle, getName("Device.%s.PartialPath1.2.SubTable"), ppTableInstNums[2]++, NULL);
+    rbusTable_registerRow(handle, getName("Device.%s.PartialPath1.2.SubTable"), ppTableInstNums[2]++, NULL);
 
     if(loopFor == 0)
     {
@@ -1624,14 +1626,14 @@ int main(int argc, char *argv[])
         if(tableRegSubscribe[0] > 0 && !tableRegComplete[0])
         {
             tableRegComplete[0] = 1;
-            rbusTable_registerRow(handle, getName("Device.%s.TableReg."), NULL, 1);
-            rbusTable_registerRow(handle, getName("Device.%s.TableReg."), NULL, 2);
+            rbusTable_registerRow(handle, getName("Device.%s.TableReg."), 1, NULL);
+            rbusTable_registerRow(handle, getName("Device.%s.TableReg."), 2, NULL);
         }
         if(tableRegSubscribe[1] > 0 && !tableRegComplete[1])
         {
             tableRegComplete[1] = 1;
-            rbusTable_registerRow(handle, getName("Device.%s.TableReg.1.TableReg."), NULL, 1);
-            rbusTable_registerRow(handle, getName("Device.%s.TableReg.1.TableReg."), NULL, 2);
+            rbusTable_registerRow(handle, getName("Device.%s.TableReg.1.TableReg."), 1, NULL);
+            rbusTable_registerRow(handle, getName("Device.%s.TableReg.1.TableReg."), 2, NULL);
         }
 
         printf("publishing tableEvent!\n");

@@ -136,7 +136,7 @@ rbusError_t setHandler(rbusHandle_t handle, rbusProperty_t property, rbusSetHand
   printf("setHandler called: property=%s value %s\n", name,val);
 
   if(strcmp(val,"register_row") == 0) {
-    rc = rbusTable_registerRow(handle, "Device.rbusProvider.PartialPath", NULL, 1);
+    rc = rbusTable_registerRow(handle, "Device.rbusProvider.PartialPath", 1, NULL);
     EXPECT_EQ(rc,RBUS_ERROR_SUCCESS);
     if(RBUS_ERROR_SUCCESS == rc)
     {

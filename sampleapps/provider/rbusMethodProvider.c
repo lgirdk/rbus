@@ -27,6 +27,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <rbus.h>
+#include <rtMemory.h>
 
 int loopFor = 10;
 rbusHandle_t handle;
@@ -94,7 +95,7 @@ static rbusError_t methodHandler(rbusHandle_t handle, char const* methodName, rb
     else if(strcmp(methodName, "Device.Methods.AsyncMethod()") == 0)
     {
         pthread_t pid;
-        MethodData* data = malloc(sizeof(MethodData));
+        MethodData* data = rt_malloc(sizeof(MethodData));
         data->asyncHandle = asyncHandle;
         data->inParams = inParams;
 

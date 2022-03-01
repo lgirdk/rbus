@@ -33,9 +33,11 @@
 #include <float.h>
 #include <rtRetainable.h>
 #include <limits.h>
+#include <rtMemory.h>
 #include "rbus_buffer.h"
 #include "rbus_log.h"
 
+#define VERIFY_NULL(T)      if(NULL == T){ return; }
 #define RBUS_TIMEZONE_LEN   6
 
 struct _rbusValue
@@ -114,17 +116,55 @@ static void rbusValue_FreeInternal(rbusValue_t v)
 
 }
 
-void rbusValue_Init(rbusValue_t* v)
+rbusValue_t rbusValue_Init(rbusValue_t* pvalue)
 {
-    (*v) = malloc(sizeof(struct _rbusValue));
-    (*v)->d.bytes = NULL;
-    (*v)->type = RBUS_NONE;
-    (*v)->retainable.refCount = 1;
+    rbusValue_t v = rt_calloc(1, sizeof(struct _rbusValue));
+    v->retainable.refCount = 1;
+    v->type = RBUS_NONE;
+    if(pvalue)
+        *pvalue = v;
+    return v;
+}
+
+rbusValue_t rbusValue_InitString(char const* s)
+{
+    rbusValue_t v;
+    rbusValue_Init(&v);
+    rbusValue_SetString(v,s);
+    return v;
+
+}
+
+rbusValue_t rbusValue_InitBytes(uint8_t const* bytes, int len)
+{
+    rbusValue_t v;
+    rbusValue_Init(&v);
+    rbusValue_SetBytes(v,bytes,len);
+    return v;
+
+}
+
+rbusValue_t rbusValue_InitProperty(struct _rbusProperty* property)
+{
+    rbusValue_t v;
+    rbusValue_Init(&v);
+    rbusValue_SetProperty(v,property);
+    return v;
+
+}
+
+rbusValue_t rbusValue_InitObject(struct _rbusObject* object)
+{
+    rbusValue_t v;
+    rbusValue_Init(&v);
+    rbusValue_SetObject(v,object);
+    return v;
 }
 
 void rbusValue_Destroy(rtRetainable* r)
 {
     rbusValue_t v = (rbusValue_t)r;
+    VERIFY_NULL(v);
     rbusValue_FreeInternal(v);
     v->type = RBUS_NONE;
     free(v);
@@ -132,19 +172,36 @@ void rbusValue_Destroy(rtRetainable* r)
 
 void rbusValue_Retain(rbusValue_t v)
 {
+    VERIFY_NULL(v);
     rtRetainable_retain(v);
 }
 
 void rbusValue_Release(rbusValue_t v)
 {
+    VERIFY_NULL(v);
     rtRetainable_release(v, rbusValue_Destroy);
+}
+
+void rbusValue_Releases(int count, ...)
+{
+    int i;
+    va_list vl;
+    va_start(vl, count);
+    for(i = 0; i < count; ++i)
+    {
+        rbusValue_t val = va_arg(vl, rbusValue_t);
+        if(val)
+            rtRetainable_release(val, rbusValue_Destroy);
+    }
+    va_end(vl);
 }
 
 char* rbusValue_ToString(rbusValue_t v, char* buf, size_t buflen)
 {
     char* p = NULL;
     int n;
-
+    if(!v)
+        return NULL;
     if(v->type == RBUS_NONE)
         return NULL;
 
@@ -223,7 +280,7 @@ char* rbusValue_ToString(rbusValue_t v, char* buf, size_t buflen)
             n = snprintf(p, 0, "FIXME TYPE %d", v->type)+1;
             break;
         }
-        p = calloc(n, 1);
+        p = rt_calloc(n, 1);
     }
     
     switch(v->type)
@@ -324,13 +381,15 @@ char* rbusValue_ToDebugString(rbusValue_t v, char* buf, size_t buflen)
 {
     int len = buflen;
     char* p = buf;
+    if(!v)
+        return NULL;
     char* s = rbusValue_ToString(v, NULL, 0);
     char const* t = rbusValueType_ToDebugString(v->type);
     char fmt[] = "rbusValue type:%s value:%s";
     if(!p)
     {
         len = snprintf(NULL, 0, fmt, t, s) + 1;
-        p = malloc(len);
+        p = rt_malloc(len);
     }
     snprintf(p, len, fmt, t, s);
     free(s);
@@ -339,6 +398,8 @@ char* rbusValue_ToDebugString(rbusValue_t v, char* buf, size_t buflen)
 
 rbusValueType_t rbusValue_GetType(rbusValue_t v)
 {
+    if(!v)
+        return RBUS_NONE;
     return v->type;
 }
 
@@ -349,11 +410,23 @@ rbusValueType_t rbusValue_GetType(rbusValue_t v)
 */
 char const* rbusValue_GetString(rbusValue_t v, int* len)
 {
+    if(!v)
+        return NULL;
     char const* bytes = (char const*)rbusValue_GetBytes(v, len);
     /* For strings, subtract 1 so the user gets back strlen instead of byte length */
     if(bytes && len && v->type == RBUS_STRING)
         (*len)--; 
     return bytes;
+}
+
+rbusValueError_t rbusValue_GetStringEx(rbusValue_t v, char const** s, int* len)
+{
+    if(!v)
+        return RBUS_VALUE_ERROR_NULL;
+    if(v->type != RBUS_STRING && v->type != RBUS_BYTES)
+        return RBUS_VALUE_ERROR_TYPE;
+    *s = rbusValue_GetString(v, len);
+    return RBUS_VALUE_ERROR_SUCCESS;
 }
 
 /*If type is RBUS_BYTES or RBUS_STRING and data is not NULL, len will be set to the length of the byte array
@@ -362,6 +435,8 @@ char const* rbusValue_GetString(rbusValue_t v, int* len)
 */
 uint8_t const* rbusValue_GetBytes(rbusValue_t v, int* len)
 {
+    if(!v)
+        return NULL;
     /*v->d.bytes is NULL in the case SetBytes was called with NULL*/
     if(!v->d.bytes)
     {
@@ -377,88 +452,14 @@ uint8_t const* rbusValue_GetBytes(rbusValue_t v, int* len)
     return v->d.bytes->data;
 }
 
-bool rbusValue_GetBoolean(rbusValue_t v)
+rbusValueError_t rbusValue_GetBytesEx(rbusValue_t v, uint8_t const** bytes, int* len)
 {
-    assert(v->type == RBUS_BOOLEAN);
-    return v->d.b;
-}
-
-char rbusValue_GetChar(rbusValue_t v)
-{
-    assert(v->type == RBUS_CHAR);
-    return v->d.c;
-}
-
-unsigned char rbusValue_GetByte(rbusValue_t v)
-{
-    assert(v->type == RBUS_BYTE);
-    return v->d.u;
-}
-
-int8_t rbusValue_GetInt8(rbusValue_t v)
-{
-    assert(v->type == RBUS_INT8);
-    return v->d.i8;
-}
-
-uint8_t rbusValue_GetUInt8(rbusValue_t v)
-{
-    assert(v->type == RBUS_UINT8);
-    return v->d.u8;
-}
-
-int16_t rbusValue_GetInt16(rbusValue_t v)
-{
-    assert(v->type == RBUS_INT16);
-    return v->d.i16;
-}
-
-uint16_t rbusValue_GetUInt16(rbusValue_t v)
-{
-    assert(v->type == RBUS_UINT16);
-    return v->d.u16;
-}
-
-int32_t rbusValue_GetInt32(rbusValue_t v)
-{
-    assert(v->type == RBUS_INT32);
-    return v->d.i32;
-}
-
-uint32_t rbusValue_GetUInt32(rbusValue_t v)
-{
-    assert(v->type == RBUS_UINT32);
-    return v->d.u32;
-}
-
-int64_t rbusValue_GetInt64(rbusValue_t v)
-{
-    assert(v->type == RBUS_INT64);
-    return v->d.i64;
-}
-
-uint64_t rbusValue_GetUInt64(rbusValue_t v)
-{
-    assert(v->type == RBUS_UINT64);
-    return v->d.u64;
-}
-
-float rbusValue_GetSingle(rbusValue_t v)
-{
-    assert(v->type == RBUS_SINGLE);
-    return v->d.f32;
-}
-
-double rbusValue_GetDouble(rbusValue_t v)
-{
-    assert(v->type == RBUS_DOUBLE);
-    return v->d.f64;
-}
-
-rbusDateTime_t const* rbusValue_GetTime(rbusValue_t v)
-{
-    assert(v->type == RBUS_DATETIME);
-    return &v->d.tv;
+    if(!v)
+        return RBUS_VALUE_ERROR_NULL;
+    if(v->type != RBUS_STRING && v->type != RBUS_BYTES)
+        return RBUS_VALUE_ERROR_TYPE;
+    *bytes = rbusValue_GetBytes(v, len);
+    return RBUS_VALUE_ERROR_SUCCESS;
 }
 
 struct _rbusProperty* rbusValue_GetProperty(rbusValue_t v)
@@ -467,14 +468,71 @@ struct _rbusProperty* rbusValue_GetProperty(rbusValue_t v)
     return v->d.property;
 }
 
+rbusValueError_t rbusValue_GetPropertyEx(rbusValue_t v, struct _rbusProperty** prop)
+{
+    if(!v)
+        return RBUS_VALUE_ERROR_NULL;
+    if(v->type != RBUS_PROPERTY)
+        return RBUS_VALUE_ERROR_TYPE;
+    *prop = v->d.property;
+    return RBUS_VALUE_ERROR_SUCCESS;
+}
+
 struct _rbusObject* rbusValue_GetObject(rbusValue_t v)
 {
     assert(v->type == RBUS_OBJECT);
     return v->d.object;
 }
 
+rbusValueError_t rbusValue_GetObjectEx(rbusValue_t v, struct _rbusObject** obj)
+{
+    if(!v)
+        return RBUS_VALUE_ERROR_NULL;
+    if(v->type != RBUS_OBJECT)
+        return RBUS_VALUE_ERROR_TYPE;
+    *obj = v->d.object;
+    return RBUS_VALUE_ERROR_SUCCESS;
+}
+
+rbusValue_t rbusValue_InitTime(rbusDateTime_t const* tv)
+{
+    rbusValue_t v;
+    rbusValue_Init(&v);
+    rbusValue_SetTime(v,tv);
+    return v;
+}
+
+rbusDateTime_t const* rbusValue_GetTime(rbusValue_t v)
+{
+    if(!v)
+        return NULL;
+    assert(v->type == RBUS_DATETIME);
+    return &v->d.tv;
+}
+
+rbusValueError_t rbusValue_GetTimeEx(rbusValue_t v, rbusDateTime_t const** tv)
+{
+    if(!v)
+        return RBUS_VALUE_ERROR_NULL;
+    if(v->type == RBUS_DATETIME)
+    {
+        *tv = &v->d.tv;
+        return RBUS_VALUE_ERROR_SUCCESS;
+    }
+    return RBUS_VALUE_ERROR_TYPE;
+}
+
+void rbusValue_SetTime(rbusValue_t v, rbusDateTime_t const* tv)
+{
+    VERIFY_NULL(v);
+    rbusValue_FreeInternal(v);
+    v->d.tv = *tv;
+    v->type = RBUS_DATETIME;
+}
+
 static void rbusValue_SetBufferData(rbusValue_t v, const void* data, int len, rbusValueType_t type)
 {
+    VERIFY_NULL(v);
     if((v->type == RBUS_STRING || v->type == RBUS_BYTES) && v->d.bytes)
     {
         assert(v->d.bytes->data);
@@ -496,6 +554,8 @@ void rbusValue_SetString(rbusValue_t v, char const* s)
       Functions rbusValue_GetString & rbusValue_GetBytes can determine if
       they need to return NULL or not by checking if the buffer is NULL or not.
     */
+
+    VERIFY_NULL(v);
     if(s == NULL)
     {
         rbusValue_FreeInternal(v);
@@ -509,6 +569,7 @@ void rbusValue_SetString(rbusValue_t v, char const* s)
 
 void rbusValue_SetBytes(rbusValue_t v, uint8_t const* p, int len)
 {
+    VERIFY_NULL(v);
     /*see comment in rbusValue_SetString*/
     if(p == NULL)
     {
@@ -519,106 +580,9 @@ void rbusValue_SetBytes(rbusValue_t v, uint8_t const* p, int len)
     rbusValue_SetBufferData(v, p, len, RBUS_BYTES);
 }
 
-void rbusValue_SetBoolean(rbusValue_t v, bool b)
-{
-    rbusValue_FreeInternal(v);
-    v->d.b = b;
-    v->type = RBUS_BOOLEAN;
-}
-
-void rbusValue_SetChar(rbusValue_t v, char c)
-{
-    rbusValue_FreeInternal(v);
-    v->d.c = c;
-    v->type = RBUS_CHAR;
-}
-
-void rbusValue_SetByte(rbusValue_t v, unsigned char u)
-{
-    rbusValue_FreeInternal(v);
-    v->d.u = u;
-    v->type = RBUS_BYTE;
-}
-
-void rbusValue_SetInt8(rbusValue_t v, int8_t i8)
-{
-    rbusValue_FreeInternal(v);
-    v->d.i8 = i8;
-    v->type = RBUS_INT8;
-}
-
-void rbusValue_SetUInt8(rbusValue_t v, uint8_t u8)
-{
-    rbusValue_FreeInternal(v);
-    v->d.u8 = u8;
-    v->type = RBUS_UINT8;
-}
-
-void rbusValue_SetInt16(rbusValue_t v, int16_t i16)
-{
-    rbusValue_FreeInternal(v);
-    v->d.i16 = i16;
-    v->type = RBUS_INT16;
-}
-
-void rbusValue_SetUInt16(rbusValue_t v, uint16_t u16)
-{
-    rbusValue_FreeInternal(v);
-    v->d.u16 = u16;
-    v->type = RBUS_UINT16;
-}
-
-void rbusValue_SetInt32(rbusValue_t v, int32_t i32)
-{
-    rbusValue_FreeInternal(v);
-    v->d.i32 = i32;
-    v->type = RBUS_INT32;
-}
-
-void rbusValue_SetUInt32(rbusValue_t v, uint32_t u32)
-{
-    rbusValue_FreeInternal(v);
-    v->d.u32 = u32;
-    v->type = RBUS_UINT32;
-}
-
-void rbusValue_SetInt64(rbusValue_t v, int64_t i64)
-{
-    rbusValue_FreeInternal(v);
-    v->d.i64 = i64;
-    v->type = RBUS_INT64;
-}
-
-void rbusValue_SetUInt64(rbusValue_t v, uint64_t u64)
-{
-    rbusValue_FreeInternal(v);
-    v->d.u64 = u64;
-    v->type = RBUS_UINT64;
-}
-
-void rbusValue_SetSingle(rbusValue_t v, float f32)
-{
-    rbusValue_FreeInternal(v);
-    v->d.f32 = f32;
-    v->type = RBUS_SINGLE;
-}
-
-void rbusValue_SetDouble(rbusValue_t v, double f64)
-{
-    rbusValue_FreeInternal(v);
-    v->d.f64 = f64;
-    v->type = RBUS_DOUBLE;
-}
-
-void rbusValue_SetTime(rbusValue_t v, rbusDateTime_t* tv)
-{
-    rbusValue_FreeInternal(v);
-    v->d.tv = *tv;
-    v->type = RBUS_DATETIME;
-}
-
 void rbusValue_SetProperty(rbusValue_t v, struct _rbusProperty* property)
 {
+    VERIFY_NULL(v);
     rbusValue_FreeInternal(v);
     v->type = RBUS_PROPERTY;
     v->d.property = property;
@@ -628,6 +592,7 @@ void rbusValue_SetProperty(rbusValue_t v, struct _rbusProperty* property)
 
 void rbusValue_SetObject(rbusValue_t v, struct _rbusObject* object)
 {
+    VERIFY_NULL(v);
     rbusValue_FreeInternal(v);
     v->type = RBUS_OBJECT;
     v->d.object = object;
@@ -637,6 +602,8 @@ void rbusValue_SetObject(rbusValue_t v, struct _rbusObject* object)
 
 uint8_t const* rbusValue_GetV(rbusValue_t v)
 {
+    if(!v)
+        return NULL;
     switch(v->type)
     {
     case RBUS_STRING:
@@ -649,6 +616,8 @@ uint8_t const* rbusValue_GetV(rbusValue_t v)
 
 uint32_t rbusValue_GetL(rbusValue_t v)
 {
+    if(!v)
+        return 1;
     switch(v->type)
     {
     case RBUS_STRING:       return v->d.bytes->posWrite; 
@@ -673,6 +642,8 @@ uint32_t rbusValue_GetL(rbusValue_t v)
 
 void rbusValue_SetTLV(rbusValue_t v, rbusValueType_t type, uint32_t length, void const* value)
 {
+    VERIFY_NULL(v);
+    VERIFY_NULL(value);
     switch(type)
     {
     /*Calling rbusValue_SetString/rbusValue_SetBuffer so the value's internal buffer is created.*/
@@ -699,11 +670,15 @@ int rbusValue_Decode(rbusValue_t* value, rbusBuffer_t const buff)
 
     rbusValue_Init(value);
 
+    if(!value)
+        return -1;
     current = *value;
 
     // read value
     rbusBuffer_ReadUInt16(buff, &type);
     rbusBuffer_ReadUInt16(buff, &length);
+    if(!buff)
+        return -1;
     current->type = type;
     switch(type)
     {
@@ -764,6 +739,7 @@ int rbusValue_Decode(rbusValue_t* value, rbusBuffer_t const buff)
 
 void rbusValue_Encode(rbusValue_t value, rbusBuffer_t buff)
 {
+    VERIFY_NULL(value);
     // encode value
     switch(value->type)
     {
@@ -865,6 +841,9 @@ int rbusValue_Compare(rbusValue_t v1, rbusValue_t v2)
 {
     if(v1 == v2)
         return 0;
+
+    if((!v1)||(!v2))
+        return -1;
 
     /*compare integral values being type insensitive*/
     if(v1->type <= RBUS_DOUBLE && v2->type <= RBUS_DOUBLE)
@@ -978,6 +957,8 @@ void rbusValue_Swap(rbusValue_t* v1, rbusValue_t* v2)
 
 void rbusValue_Copy(rbusValue_t dest, rbusValue_t source)
 {
+    VERIFY_NULL(dest);
+    VERIFY_NULL(source);
     if(dest == source)
     {
         RBUSLOG_INFO("%s: dest and source are the same", __FUNCTION__);
@@ -1028,6 +1009,8 @@ bool rbusValue_SetFromString(rbusValue_t value, rbusValueType_t type, const char
     unsigned int tmp_strlen = 0;
 
     if (pStringInput == NULL)
+        return false;
+    if(value == NULL)
         return false;
 
     switch(type)
@@ -1222,8 +1205,8 @@ void rbusValue_fwrite(rbusValue_t value, int depth, FILE* fout)
 {
     rbusValueType_t type;
 
-    if(!value)
-        return;
+    VERIFY_NULL(value);
+    VERIFY_NULL(fout);
 
     type = rbusValue_GetType(value);
 
@@ -1245,3 +1228,46 @@ void rbusValue_fwrite(rbusValue_t value, int depth, FILE* fout)
         free(s);
     }
 }
+
+#define DEFINE_VALUE_TYPE_FUNCS(T1, T2, T3, T4)\
+rbusValue_t rbusValue_Init##T1(T2 data)\
+{\
+    rbusValue_t v;\
+    rbusValue_Init(&v);\
+    rbusValue_Set##T1(v,data);\
+    return v;\
+}\
+T2 rbusValue_Get##T1(rbusValue_t v)\
+{\
+    assert(v->type == T3);\
+    return v->d.T4;\
+}\
+rbusValueError_t rbusValue_Get##T1##Ex(rbusValue_t v, T2* data)\
+{\
+    if(v->type == T3)\
+    {\
+        *data = v->d.T4;\
+        return RBUS_VALUE_ERROR_SUCCESS;\
+    }\
+    return RBUS_VALUE_ERROR_TYPE;\
+}\
+void rbusValue_Set##T1(rbusValue_t v, T2 data)\
+{\
+    rbusValue_FreeInternal(v);\
+    v->d.T4 = data;\
+    v->type = T3;\
+}
+
+DEFINE_VALUE_TYPE_FUNCS(Boolean, bool, RBUS_BOOLEAN, b)
+DEFINE_VALUE_TYPE_FUNCS(Char, char, RBUS_CHAR, c)
+DEFINE_VALUE_TYPE_FUNCS(Byte, unsigned char, RBUS_BYTE, u)
+DEFINE_VALUE_TYPE_FUNCS(Int8, int8_t, RBUS_INT8, i8)
+DEFINE_VALUE_TYPE_FUNCS(UInt8, uint8_t, RBUS_UINT8, u8)
+DEFINE_VALUE_TYPE_FUNCS(Int16, int16_t, RBUS_INT16, i16)
+DEFINE_VALUE_TYPE_FUNCS(UInt16, uint16_t, RBUS_UINT16, u16)
+DEFINE_VALUE_TYPE_FUNCS(Int32, int32_t, RBUS_INT32, i32)
+DEFINE_VALUE_TYPE_FUNCS(UInt32, uint32_t, RBUS_UINT32, u32)
+DEFINE_VALUE_TYPE_FUNCS(Int64, int64_t, RBUS_INT64, i64)
+DEFINE_VALUE_TYPE_FUNCS(UInt64, uint64_t, RBUS_UINT64, u64)
+DEFINE_VALUE_TYPE_FUNCS(Single, float, RBUS_SINGLE, f32)
+DEFINE_VALUE_TYPE_FUNCS(Double, double, RBUS_DOUBLE, f64)

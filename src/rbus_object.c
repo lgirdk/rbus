@@ -18,10 +18,14 @@
 */
 
 #include <rbus.h>
+#include <rtRetainable.h>
+#include <rtMemory.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include <rtRetainable.h>
+#include <stdarg.h>
+
+#define VERIFY_NULL(T)    if(NULL == T){ return; }
 
 struct _rbusObject
 {
@@ -37,22 +41,17 @@ struct _rbusObject
                                   2) if parent RBUS_OBJECT_MULTI_INSTANCE_TABLE: next is in a list of RBUS_OBJECT_MULTI_INSTANCE_ROW*/
 };
 
-void rbusObject_Init(rbusObject_t* object, char const* name)
+rbusObject_t rbusObject_Init(rbusObject_t* pobject, char const* name)
 {
-    (*object) = malloc(sizeof(struct _rbusObject));
-
+    rbusObject_t object;
+    object = rt_calloc(1, sizeof(struct _rbusObject));
+    object->type = RBUS_OBJECT_SINGLE_INSTANCE;
+    object->retainable.refCount = 1;
     if(name)
-        (*object)->name = strdup(name);
-    else
-        (*object)->name = NULL;
-
-    (*object)->properties = NULL;
-
-    (*object)->retainable.refCount = 1;
-
-    (*object)->parent = (*object)->children = (*object)->next = NULL;
-
-    (*object)->type = RBUS_OBJECT_SINGLE_INSTANCE;
+        object->name = strdup(name);
+    if(pobject)
+        *pobject = object;
+    return object;
 }
 
 void rbusObject_InitMultiInstance(rbusObject_t* pobject, char const* name)
@@ -64,6 +63,7 @@ void rbusObject_InitMultiInstance(rbusObject_t* pobject, char const* name)
 void rbusObject_Destroy(rtRetainable* r)
 {
     rbusObject_t object = (rbusObject_t)r;
+    VERIFY_NULL(object);
     if(object->name)
     {
         free(object->name);
@@ -83,12 +83,28 @@ void rbusObject_Destroy(rtRetainable* r)
 
 void rbusObject_Retain(rbusObject_t object)
 {
+    VERIFY_NULL(object);
     rtRetainable_retain(object);
 }
 
 void rbusObject_Release(rbusObject_t object)
 {
+    VERIFY_NULL(object);
     rtRetainable_release(object, rbusObject_Destroy);
+}
+
+void rbusObject_Releases(int count, ...)
+{
+    int i;
+    va_list vl;
+    va_start(vl, count);
+    for(i = 0; i < count; ++i)
+    {
+        rbusObject_t obj = va_arg(vl, rbusObject_t);
+        if(obj)
+            rtRetainable_release(obj, rbusObject_Destroy);
+    }
+    va_end(vl);
 }
 
 int rbusObject_Compare(rbusObject_t object1, rbusObject_t object2, bool recursive)
@@ -102,6 +118,11 @@ int rbusObject_Compare(rbusObject_t object1, rbusObject_t object2, bool recursiv
 
     if(object1 == object2)
         return 0;
+
+    if((object1==NULL)&&(object2!=NULL))
+        return -1;
+    if((object1!=NULL)&&(object2==NULL))
+        return 1;
 
     rc = strcmp(object1->name, object2->name);
     if(rc != 0)
@@ -220,6 +241,7 @@ char const* rbusObject_GetName(rbusObject_t object)
 
 void rbusObject_SetName(rbusObject_t object, char const* name)
 {
+    VERIFY_NULL(object);
     if(object->name)
         free(object->name);
     if(name)
@@ -230,11 +252,14 @@ void rbusObject_SetName(rbusObject_t object, char const* name)
 
 rbusProperty_t rbusObject_GetProperties(rbusObject_t object)
 {
+    if(!object)
+        return NULL;
     return object->properties;
 }
 
 void rbusObject_SetProperties(rbusObject_t object, rbusProperty_t properties)
 {
+    VERIFY_NULL(object);
     if(object->properties)
         rbusProperty_Release(object->properties);
     object->properties = properties;
@@ -244,6 +269,8 @@ void rbusObject_SetProperties(rbusObject_t object, rbusProperty_t properties)
 
 rbusProperty_t rbusObject_GetProperty(rbusObject_t object, char const* name)
 {
+    if(!object)
+        return NULL;
     rbusProperty_t prop = object->properties;
     while(prop && strcmp(rbusProperty_GetName(prop), name))
         prop = rbusProperty_GetNext(prop);
@@ -252,6 +279,7 @@ rbusProperty_t rbusObject_GetProperty(rbusObject_t object, char const* name)
 
 void rbusObject_SetProperty(rbusObject_t object, rbusProperty_t newProp)
 {
+    VERIFY_NULL(object);
     if(object->properties == NULL)
     {
         rbusObject_SetProperties(object, newProp);
@@ -281,7 +309,7 @@ void rbusObject_SetProperty(rbusObject_t object, rbusProperty_t newProp)
             rbusProperty_t next = rbusProperty_GetNext(oldProp);
             if(next)
             {
-                rbusProperty_PushBack(newProp, next);/*newProp will retain the list*/
+                rbusProperty_Append(newProp, next);/*newProp will retain the list*/
             }
             
             /*link newProp to the tail of all the properties that came before oldProp*/
@@ -305,7 +333,14 @@ void rbusObject_SetProperty(rbusObject_t object, rbusProperty_t newProp)
 
 rbusValue_t rbusObject_GetValue(rbusObject_t object, char const* name)
 {
+    return rbusObject_GetPropertyValue(object, name);
+}
+
+rbusValue_t rbusObject_GetPropertyValue(rbusObject_t object, char const* name)
+{
     rbusProperty_t prop;
+    if(!object)
+        return NULL;
     if(name)
         prop = rbusObject_GetProperty(object, name);
     else
@@ -318,6 +353,14 @@ rbusValue_t rbusObject_GetValue(rbusObject_t object, char const* name)
 
 void rbusObject_SetValue(rbusObject_t object, char const* name, rbusValue_t value)
 {
+    rbusObject_SetPropertyValue(object, name, value);
+}
+
+void rbusObject_SetPropertyValue(rbusObject_t object, char const* name, rbusValue_t value)
+{
+    VERIFY_NULL(object);
+    VERIFY_NULL(value);
+    VERIFY_NULL(name);
     rbusProperty_t prop = rbusObject_GetProperty(object, name);
     if(prop)
     {
@@ -332,11 +375,12 @@ void rbusObject_SetValue(rbusObject_t object, char const* name, rbusValue_t valu
         }
         else
         {
-            rbusProperty_PushBack(object->properties, prop);
+            rbusProperty_Append(object->properties, prop);
         }
         rbusProperty_Release(prop);
     }
 }
+
 
 rbusObject_t rbusObject_GetParent(rbusObject_t object)
 {
@@ -345,6 +389,7 @@ rbusObject_t rbusObject_GetParent(rbusObject_t object)
 
 void rbusObject_SetParent(rbusObject_t object, rbusObject_t parent)
 {
+    VERIFY_NULL(object);
     object->parent = parent;
     /*
     if(object->parent)
@@ -357,11 +402,14 @@ void rbusObject_SetParent(rbusObject_t object, rbusObject_t parent)
 
 rbusObject_t rbusObject_GetChildren(rbusObject_t object)
 {
+    if(!object)
+        return NULL;
     return object->children;
 }
 
 void rbusObject_SetChildren(rbusObject_t object, rbusObject_t children)
 {
+    VERIFY_NULL(object);
     if(object->children)
         rbusObject_Release(object->children);
     object->children = children;
@@ -371,11 +419,14 @@ void rbusObject_SetChildren(rbusObject_t object, rbusObject_t children)
 
 rbusObject_t rbusObject_GetNext(rbusObject_t object)
 {
+    if(!object)
+        return NULL;
     return object->next;
 }
 
 void rbusObject_SetNext(rbusObject_t object, rbusObject_t next)
 {
+    VERIFY_NULL(object);
     if(object->next)
         rbusObject_Release(object->next);
     object->next = next;
@@ -393,12 +444,14 @@ void rbusObject_fwrite(rbusObject_t obj, int depth, FILE* fout)
     int i;
     rbusObject_t child;
     rbusProperty_t prop;
+    VERIFY_NULL(obj);
+    VERIFY_NULL(fout);
     for(i=0; i<depth; ++i)
         fprintf(fout, " ");
     fprintf(fout, "rbusObject name=%s\n\r", rbusObject_GetName(obj));
     prop = rbusObject_GetProperties(obj);
-    if(prop)
-        rbusProperty_fwrite(prop, depth+1, fout);
+    VERIFY_NULL(prop);
+    rbusProperty_fwrite(prop, depth+1, fout);
     child = rbusObject_GetChildren(obj);
     while(child)
     {
@@ -407,166 +460,76 @@ void rbusObject_fwrite(rbusObject_t obj, int depth, FILE* fout)
     }
 }
 
-#if 0
-void rbusObject_SetBoolean(rbusObject_t object, char const* name, bool b);
-void rbusObject_SetChar(rbusObject_t object, char const* name, char c);
-void rbusObject_SetUChar(rbusObject_t object, char const* name, unsigned char u);
-void rbusObject_SetInt8(rbusObject_t object, char const* name, int8_t i8);
-void rbusObject_SetUInt8(rbusObject_t object, char const* name, uint8_t u8);
-void rbusObject_SetInt16(rbusObject_t object, char const* name, int16_t i16);
-void rbusObject_SetUInt16(rbusObject_t object, char const* name, uint16_t u16);
-void rbusObject_SetInt32(rbusObject_t object, char const* name, int32_t i32);
-void rbusObject_SetUInt32(rbusObject_t object, char const* name, uint32_t u32);
-void rbusObject_SetInt64(rbusObject_t object, char const* name, int64_t i64);
-void rbusObject_SetUInt64(rbusObject_t object, char const* name, uint64_t u64);
-void rbusObject_SetSingle(rbusObject_t object, char const* name, float f32);
-void rbusObject_SetDouble(rbusObject_t object, char const* name, double f64);
-void rbusObject_SetTime(rbusObject_t object, char const* name, struct timeval* tv);
-void rbusObject_SetString(rbusObject_t object, char const* name, char const* s);
-void rbusObject_SetBytes(rbusObject_t object, char const* name, uint8_t const* bytes, int len);
-void rbusObject_SetObject(rbusObject_t object, char const* name, rbusObject_t o);
+#define DEFINE_OBJECT_PROPERTY_VALUE(T1, T2)\
+rbusValueError_t rbusObject_GetProperty##T1(rbusObject_t object, char const* name, T2* pdata)\
+{\
+    rbusValue_t v = NULL;\
+    rbusProperty_t p = rbusObject_GetProperty(object, name);\
+    if(!p)\
+        return RBUS_VALUE_ERROR_NOT_FOUND;\
+    v = rbusProperty_GetValue(p);\
+    if(v)\
+        return rbusValue_Get##T1##Ex(v, pdata);\
+    return RBUS_VALUE_ERROR_NULL;\
+}\
+void rbusObject_SetProperty##T1(rbusObject_t object, char const* name, T2 data)\
+{\
+    rbusValue_t v = rbusValue_Init##T1(data);\
+    rbusObject_SetPropertyValue(object, name, v);\
+    rbusValue_Release(v);\
+}
 
-bool rbusObject_GetBoolean(rbusObject_t object, char const* name);
-char rbusObject_GetChar(rbusObject_t object, char const* name);
-unsigned char rbusObject_GetUChar(rbusObject_t object, char const* name);
-int8_t rbusObject_GetInt8(rbusObject_t object, char const* name);
-uint8_t rbusObject_GetUInt8(rbusObject_t object, char const* name);
-int16_t rbusObject_GetInt16(rbusObject_t object, char const* name);
-uint16_t rbusObject_GetUInt16(rbusObject_t object, char const* name);
-int32_t rbusObject_GetInt32(rbusObject_t object, char const* name);
-uint32_t rbusObject_GetUInt32(rbusObject_t object, char const* name);
-int64_t rbusObject_GetInt64(rbusObject_t object, char const* name);
-uint64_t rbusObject_GetUInt64(rbusObject_t object, char const* name);
-float rbusObject_GetSingle(rbusObject_t object, char const* name);
-double rbusObject_GetDouble(rbusObject_t object, char const* name);
-struct timeval* rbusObject_GetTime(rbusObject_t object, char const* name);
-char const* rbusObject_GetString(rbusObject_t object, char const* name);
-uint8_t const* rbusObject_GetBytes(rbusObject_t object, char const* name);
-rbusObject_t rbusObject_GetObject(rbusObject_t object, char const* name);
-#endif 
+DEFINE_OBJECT_PROPERTY_VALUE(Boolean,bool);
+DEFINE_OBJECT_PROPERTY_VALUE(Char,char);
+DEFINE_OBJECT_PROPERTY_VALUE(Byte,unsigned char);
+DEFINE_OBJECT_PROPERTY_VALUE(Int8,int8_t);
+DEFINE_OBJECT_PROPERTY_VALUE(UInt8,uint8_t);
+DEFINE_OBJECT_PROPERTY_VALUE(Int16,int16_t);
+DEFINE_OBJECT_PROPERTY_VALUE(UInt16,uint16_t);
+DEFINE_OBJECT_PROPERTY_VALUE(Int32,int32_t);
+DEFINE_OBJECT_PROPERTY_VALUE(UInt32,uint32_t);
+DEFINE_OBJECT_PROPERTY_VALUE(Int64,int64_t);
+DEFINE_OBJECT_PROPERTY_VALUE(UInt64,uint64_t);
+DEFINE_OBJECT_PROPERTY_VALUE(Single,float);
+DEFINE_OBJECT_PROPERTY_VALUE(Double,double);
+DEFINE_OBJECT_PROPERTY_VALUE(Time,rbusDateTime_t const*);
+DEFINE_OBJECT_PROPERTY_VALUE(Property,struct _rbusProperty*);
+DEFINE_OBJECT_PROPERTY_VALUE(Object,struct _rbusObject*);
 
-#if 0
+rbusValueError_t rbusObject_GetPropertyString(rbusObject_t object, char const* name, char const** pdata, int* len)
+{
+    rbusValue_t v = NULL;
+    rbusProperty_t p = rbusObject_GetProperty(object, name);
+    if(!p)
+        return RBUS_VALUE_ERROR_NOT_FOUND;
+    v = rbusProperty_GetValue(p);
+    if(v)
+        return rbusValue_GetStringEx(v, pdata, len);
+    return RBUS_VALUE_ERROR_NULL;
+}
+void rbusObject_SetPropertyString(rbusObject_t object, char const* name, char const* data)
+{
+    rbusValue_t v = rbusValue_InitString(data);
+    VERIFY_NULL(v);
+    rbusObject_SetPropertyValue(object, name, v);
+    rbusValue_Release(v);
+}
 
-void rbusObject_SetBoolean(rbusObject_t object, char const* name, bool b)
+rbusValueError_t rbusObject_GetPropertyBytes(rbusObject_t object, char const* name, uint8_t const** pdata, int* len)
 {
-    rbusProperty_t prop = rbusObject_GetProperty(object, property->name);
-    if(prop)
-        return rbusProperty_SetValue(prop, rbusValue_FromBoolean(value));
+    rbusValue_t v = NULL;
+    rbusProperty_t p = rbusObject_GetProperty(object, name);
+    if(!p)
+        return RBUS_VALUE_ERROR_NOT_FOUND;
+    v = rbusProperty_GetValue(p);
+    if(v)
+        return rbusValue_GetBytesEx(v, pdata, len);
+    return RBUS_VALUE_ERROR_NULL;
 }
-void rbusObject_SetChar(rbusObject_t object, char const* name, char c)
+void rbusObject_SetPropertyBytes(rbusObject_t object, char const* name, uint8_t const* data, int len)
 {
+    rbusValue_t v = rbusValue_InitBytes(data, len);
+    VERIFY_NULL(v);
+    rbusObject_SetPropertyValue(object, name, v);
+    rbusValue_Release(v);
 }
-void rbusObject_SetUChar(rbusObject_t object, char const* name, unsigned char u)
-{
-}
-void rbusObject_SetInt8(rbusObject_t object, char const* name, int8_t i8)
-{
-}
-void rbusObject_SetUInt8(rbusObject_t object, char const* name, uint8_t u8)
-{
-}
-void rbusObject_SetInt16(rbusObject_t object, char const* name, int16_t i16)
-{
-}
-void rbusObject_SetUInt16(rbusObject_t object, char const* name, uint16_t u16)
-{
-}
-void rbusObject_SetInt32(rbusObject_t object, char const* name, int32_t i32)
-{
-}
-void rbusObject_SetUInt32(rbusObject_t object, char const* name, uint32_t u32)
-{
-}
-void rbusObject_SetInt64(rbusObject_t object, char const* name, int64_t i64)
-{
-}
-void rbusObject_SetUInt64(rbusObject_t object, char const* name, uint64_t u64)
-{
-}
-void rbusObject_SetSingle(rbusObject_t object, char const* name, float f32)
-{
-}
-void rbusObject_SetDouble(rbusObject_t object, char const* name, double f64)
-{
-}
-void rbusObject_SetTime(rbusObject_t object, char const* name, struct timeval* tv)
-{
-}
-void rbusObject_SetString(rbusObject_t object, char const* name, char const* s)
-{
-}
-void rbusObject_SetBytes(rbusObject_t object, char const* name, uint8_t const* bytes, int len)
-{
-}
-void rbusObject_SetObject(rbusObject_t object, char const* name, rbusObject_t o)
-{
-}
-bool rbusObject_GetBoolean(rbusObject_t object, char const* name)
-{
-}
-char rbusObject_GetChar(rbusObject_t object, char const* name)
-{
-}
-unsigned char rbusObject_GetUChar(rbusObject_t object, char const* name)
-{
-}
-int8_t rbusObject_GetInt8(rbusObject_t object, char const* name)
-{
-    rbusProperty_t prop = rbusObject_GetProperty(object, property->name);
-    if(prop)
-        return rbusProperty
-    return 0;
-}
-uint8_t rbusObject_GetUInt8(rbusObject_t object, char const* name)
-{
-    return 0;
-}
-int16_t rbusObject_GetInt16(rbusObject_t object, char const* name)
-{
-    return 0;
-}
-uint16_t rbusObject_GetUInt16(rbusObject_t object, char const* name)
-{
-    return 0;
-}
-int32_t rbusObject_GetInt32(rbusObject_t object, char const* name)
-{
-    return 0;
-}
-uint32_t rbusObject_GetUInt32(rbusObject_t object, char const* name)
-{
-    return 0;
-}
-int64_t rbusObject_GetInt64(rbusObject_t object, char const* name)
-{
-    return 0;
-}
-uint64_t rbusObject_GetUInt64(rbusObject_t object, char const* name)
-{
-    return 0;
-}
-float rbusObject_GetSingle(rbusObject_t object, char const* name)
-{
-    return 0;
-}
-double rbusObject_GetDouble(rbusObject_t object, char const* name)
-{
-    return 0;
-}
-struct timeval* rbusObject_GetTime(rbusObject_t object, char const* name)
-{
-    return 0;
-}
-char const* rbusObject_GetString(rbusObject_t object, char const* name)
-{
-    return 0;
-}
-uint8_t const* rbusObject_GetBytes(rbusObject_t object, char const* name)
-{
-    return 0;
-}
-rbusObject_t rbusObject_GetObject(rbusObject_t object, char const* name)
-{
-    return 0;
-}
-#endif

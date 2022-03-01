@@ -29,6 +29,7 @@
 #include <rbus.h>
 #include <rtList.h>
 #include "../common/test_macros.h"
+#include <rtMemory.h>
 
 #define SLEEP_TABLE_ROWS 1
 #define SLEEP_VALUE_CHANGE 3
@@ -122,7 +123,7 @@ static void eventHandler(
 
 static void addTestResult(int i, char const* user, char const* name, char const* data, bool ok)
 {
-    Result* r = malloc(sizeof(struct Result));
+    Result* r = rt_malloc(sizeof(struct Result));
     r->type = i;
     r->user = strdup(user);
     r->name = strdup(name);

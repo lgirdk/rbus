@@ -29,6 +29,7 @@
 #include <rbus.h>
 #include "../common/testValueHelper.h"
 #include "../common/test_macros.h"
+#include <rtMemory.h>
 
 int getDurationValue()
 {
@@ -112,7 +113,7 @@ void testLargeValues(rbusHandle_t handle)
 {
     int rc = RBUS_ERROR_SUCCESS;
     const int BIGSIZE = 5961;
-    char* valueStr = malloc(BIGSIZE);
+    char* valueStr = rt_malloc(BIGSIZE);
     rbusValue_t valBin;
     int i;
 

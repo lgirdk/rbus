@@ -18,6 +18,7 @@
 */
 
 #include "rbus_tokenchain.h"
+#include <rtMemory.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <memory.h>
@@ -96,7 +97,7 @@ TokenChain* TokenChain_create(char const* sourceName, elementNode* regNode)
         return NULL;
     }
 
-    chain = malloc(sizeof(TokenChain));
+    chain = rt_malloc(sizeof(TokenChain));
 
     chain->first = chain->last = NULL;
 
@@ -125,7 +126,7 @@ TokenChain* TokenChain_create(char const* sourceName, elementNode* regNode)
             ptr--;
         }
 
-        tok = malloc(sizeof(Token));
+        tok = rt_malloc(sizeof(Token));
         tok->node = node;
         tok->prev = NULL;
         tok->type = TokenNonRow;
@@ -233,6 +234,8 @@ tokenChainError:
 
 void TokenChain_destroy(TokenChain* chain)
 {
+    if(!chain)
+        return;
     Token* token = chain->first;
     if(token)
         free(token->text);
@@ -247,6 +250,8 @@ void TokenChain_destroy(TokenChain* chain)
 
 bool TokenChain_match(TokenChain* chain, elementNode* instNode)
 {
+    if((!chain)||(!instNode))
+        return false;
     Token* token = chain->last;
     elementNode* inst = instNode;
     int rc;

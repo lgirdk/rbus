@@ -24,6 +24,14 @@
  * @brief       An rbus object is a named collection of properties.
  *
  * An rbusObject_t is a reference counted handle to an rbus object.  
+ * 
+ * This API is not thread-safe.  
+ * All instances of types rbusValue_t, rbusProperty_t, and rbusObject_t are referenced counted.
+ * Instances of these types may have private references to other instances of these types.
+ * There are read methods in this api that return references to these private instances.
+ * There are write methods in this api that release current references and retain new ones. 
+ * When this happens any reference held by the user becomes unlinked from the parent instance.
+ * The instance will also be destroyed unless the user retains it for themselves.
  * @{
  */
 
@@ -57,7 +65,7 @@ typedef struct _rbusObject* rbusObject_t;
  *  @param  name  optional name to assign the object.  The name is dublicated/copied.  
  *          If NULL is passed the object's name will be NULL.
  */
-void rbusObject_Init(rbusObject_t* pobject, char const* name);
+rbusObject_t rbusObject_Init(rbusObject_t* pobject, char const* name);
 
 void rbusObject_InitMultiInstance(rbusObject_t* pobject, char const* name);
 
@@ -78,6 +86,8 @@ void rbusObject_Retain(rbusObject_t object);
  *  @param object the object to release
  */
 void rbusObject_Release(rbusObject_t object);
+
+void rbusObject_Releases(int count, ...);
 
 /** @fn void rbusObject_Compare(rbusObject_t object1, rbusObject_t object2)
  *  @brief Compare two objects for equality.  They are equal if both their names and values are equal.
@@ -143,6 +153,7 @@ void rbusObject_SetProperty(rbusObject_t object, rbusProperty_t property);
  *  @return The value of the property matching the name, or NULL if no match found.
  */ 
 rbusValue_t rbusObject_GetValue(rbusObject_t object, char const* name);
+rbusValue_t rbusObject_GetPropertyValue(rbusObject_t object, char const* name);
 
 /** @fn void rbusObject_SetValue(rbusObject_t object, char const* name, rbusValue_t value)
  *  @brief Set the value of a property by name on an object.
@@ -154,6 +165,60 @@ rbusValue_t rbusObject_GetValue(rbusObject_t object, char const* name);
  *  @param value a value to set on the object's property
  */
 void rbusObject_SetValue(rbusObject_t object, char const* name, rbusValue_t value);
+void rbusObject_SetPropertyValue(rbusObject_t object, char const* name, rbusValue_t value);
+
+/** @name rbusObject_GetValue[Type]
+ *  @brief These functions get the type specific value of a property by name on an object.
+ * 
+ *  In order to prevent crashes, if the property name doesn't exist in the object,
+ *  a warning will be logged and a default empty data will be returned.
+ *  @param object An object.
+ *  @param name the name of the property inside the object to set the value to
+ *  @return the type specific data
+ */
+///@{
+rbusValueError_t rbusObject_GetPropertyBoolean(rbusObject_t object, char const* name, bool* b);
+rbusValueError_t rbusObject_GetPropertyInt16(rbusObject_t object, char const* name, int16_t* i16);
+rbusValueError_t rbusObject_GetPropertyUInt16(rbusObject_t object, char const* name, uint16_t* u16);
+rbusValueError_t rbusObject_GetPropertyInt32(rbusObject_t object, char const* name, int32_t* i32);
+rbusValueError_t rbusObject_GetPropertyUInt32(rbusObject_t object, char const* name, uint32_t* u32);
+rbusValueError_t rbusObject_GetPropertyInt64(rbusObject_t object, char const* name, int64_t* i64);
+rbusValueError_t rbusObject_GetPropertyUInt64(rbusObject_t object, char const* name, uint64_t* u64);
+rbusValueError_t rbusObject_GetPropertySingle(rbusObject_t object, char const* name, float* f32);
+rbusValueError_t rbusObject_GetPropertyDouble(rbusObject_t object, char const* name, double* f64);
+rbusValueError_t rbusObject_GetPropertyTime(rbusObject_t object, char const* name, rbusDateTime_t const** tv);
+rbusValueError_t rbusObject_GetPropertyString(rbusObject_t object, char const* name, char const** s, int* len);
+rbusValueError_t rbusObject_GetPropertyBytes(rbusObject_t object, char const* name, uint8_t const** bytes, int* len);
+rbusValueError_t rbusObject_GetPropertyProperty(rbusObject_t object, char const* name, struct _rbusProperty** p);
+rbusValueError_t rbusObject_GetPropertyObject(rbusObject_t object, char const* name, struct _rbusObject** o);
+///@}
+
+/** @name rbusObject_SetValue[Type]
+ *  @brief These functions set the value of a property by name on an object, 
+ * where the value is internally initialized with the corresponding type and data.
+ * 
+ * If a property with the same name does not exist, a new property is created.
+ * Ownership of any previous property/value will be released.
+ *  @param object An object.
+ *  @param name the name of the property inside the object to set the value to
+ *  @param value the type specific data to set on the object's property
+ */
+///@{
+void rbusObject_SetPropertyBoolean(rbusObject_t object, char const* name, bool b);
+void rbusObject_SetPropertyInt16(rbusObject_t object, char const* name, int16_t i16);
+void rbusObject_SetPropertyUInt16(rbusObject_t object, char const* name, uint16_t u16);
+void rbusObject_SetPropertyInt32(rbusObject_t object, char const* name, int32_t i32);
+void rbusObject_SetPropertyUInt32(rbusObject_t object, char const* name, uint32_t u32);
+void rbusObject_SetPropertyInt64(rbusObject_t object, char const* name, int64_t i64);
+void rbusObject_SetPropertyUInt64(rbusObject_t object, char const* name, uint64_t u64);
+void rbusObject_SetPropertySingle(rbusObject_t object, char const* name, float f32);
+void rbusObject_SetPropertyDouble(rbusObject_t object, char const* name, double f64);
+void rbusObject_SetPropertyTime(rbusObject_t object, char const* name, rbusDateTime_t const* tv);
+void rbusObject_SetPropertyString(rbusObject_t object, char const* name, char const* s);
+void rbusObject_SetPropertyBytes(rbusObject_t object, char const* name, uint8_t const* bytes, int len);
+void rbusObject_SetPropertyProperty(rbusObject_t object, char const* name, struct _rbusProperty* p);
+void rbusObject_SetPropertyObject(rbusObject_t object, char const* name, struct _rbusObject* o);
+///@}
 
 rbusObject_t rbusObject_GetParent(rbusObject_t object);
 void rbusObject_SetParent(rbusObject_t object, rbusObject_t parent);

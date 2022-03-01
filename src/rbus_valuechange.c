@@ -44,6 +44,7 @@
 #include <errno.h>
 #include <rtVector.h>
 #include <rtTime.h>
+#include <rtMemory.h>
 
 #define ERROR_CHECK(CMD) \
 { \
@@ -53,6 +54,7 @@
     RBUSLOG_ERROR("Error %d:%s running command " #CMD, err, strerror(err)); \
   } \
 }
+#define VERIFY_NULL(T)      if(NULL == T){ return; }
 #define LOCK() ERROR_CHECK(pthread_mutex_lock(&gVC->mutex))
 #define UNLOCK() ERROR_CHECK(pthread_mutex_unlock(&gVC->mutex))
 
@@ -84,7 +86,7 @@ static void rbusValueChange_Init()
     if(gVC)
         return;
 
-    gVC = malloc(sizeof(struct ValueChangeDetector_t));
+    gVC = rt_malloc(sizeof(struct ValueChangeDetector_t));
 
     gVC->running = 0;
     gVC->params = NULL;
@@ -104,8 +106,10 @@ static void rbusValueChange_Init()
 static void vcParams_Free(void* p)
 {
     ValueChangeRecord* rec = (ValueChangeRecord*)p;
-    rbusProperty_Release(rec->property);
-    free(rec);
+    if(rec){
+        rbusProperty_Release(rec->property);
+        free(rec);
+    }
 }
 
 static ValueChangeRecord* vcParams_Find(const elementNode* paramNode)
@@ -242,8 +246,6 @@ void rbusValueChange_AddPropertyNode(rbusHandle_t handle, elementNode* propNode)
 {
     ValueChangeRecord* rec;
 
-    RBUSLOG_DEBUG("%s: %s", __FUNCTION__, propNode->fullName);
-
     if(!gVC)
     {
         rbusValueChange_Init();
@@ -256,6 +258,7 @@ void rbusValueChange_AddPropertyNode(rbusHandle_t handle, elementNode* propNode)
         RBUSLOG_WARN("%s: propNode NULL error", __FUNCTION__);
         return;
     }
+    RBUSLOG_DEBUG("%s: %s", __FUNCTION__, propNode->fullName);
     assert(propNode->type == RBUS_ELEMENT_TYPE_PROPERTY);
     if(propNode->type != RBUS_ELEMENT_TYPE_PROPERTY)
     {
@@ -279,7 +282,7 @@ void rbusValueChange_AddPropertyNode(rbusHandle_t handle, elementNode* propNode)
 
     if(!rec)
     {
-        rec = (ValueChangeRecord*)malloc(sizeof(ValueChangeRecord));
+        rec = (ValueChangeRecord*)rt_malloc(sizeof(ValueChangeRecord));
         rec->handle = handle;
         rec->node = propNode;
 
@@ -326,7 +329,7 @@ void rbusValueChange_RemovePropertyNode(rbusHandle_t handle, elementNode* propNo
     bool stopThread = false;
 
     (void)(handle);
-
+    VERIFY_NULL(propNode);
     RBUSLOG_DEBUG("%s: %s", __FUNCTION__, propNode->fullName);
 
     if(!gVC)

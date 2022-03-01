@@ -111,8 +111,8 @@ void testObjectProperty()
     rbusProperty_Init(&replace2, "prop2", NULL);
     rbusProperty_Init(&replace3, "prop3", NULL);
 
-    rbusProperty_PushBack(prop1, prop2);
-    rbusProperty_PushBack(prop1, prop3);
+    rbusProperty_Append(prop1, prop2);
+    rbusProperty_Append(prop1, prop3);
 
     rbusObject_Init(&obj, NULL);
 
@@ -147,6 +147,36 @@ void testObjectProperty()
     rbusObject_Release(obj);
 }
 
+void testObjectPropertyValueType()
+{
+    rbusObject_t obj;
+    bool b;
+    int32_t i32;
+    uint32_t u32;
+    char const* s;
+    int slen;
+    rbusProperty_t propnulval;
+
+    rbusObject_Init(&obj, NULL);
+    rbusProperty_Init(&propnulval, "nulval", NULL);
+
+    rbusObject_SetProperty(obj, propnulval);
+    rbusObject_SetPropertyBoolean(obj, "bool", true);
+    rbusObject_SetPropertyInt32(obj, "int32", -32);
+    rbusObject_SetPropertyUInt32(obj, "uint32", 32);
+    rbusObject_SetPropertyString(obj, "string", "hello");
+
+    TEST(rbusObject_GetPropertyBoolean(obj, "noexist", &b) == RBUS_VALUE_ERROR_NOT_FOUND);
+    TEST(rbusObject_GetPropertyBoolean(obj, "nulval", &b) == RBUS_VALUE_ERROR_NULL);
+    TEST(rbusObject_GetPropertyBoolean(obj, "bool", &b) == RBUS_VALUE_ERROR_SUCCESS && b == true);
+    TEST(rbusObject_GetPropertyInt32(obj, "int32", &i32) == RBUS_VALUE_ERROR_SUCCESS && i32 == -32);
+    TEST(rbusObject_GetPropertyUInt32(obj, "uint32", &u32) == RBUS_VALUE_ERROR_SUCCESS && u32 == 32);
+    TEST(rbusObject_GetPropertyString(obj, "string", &s, &slen) == RBUS_VALUE_ERROR_SUCCESS && !strcmp(s, "hello") && slen == 5);
+
+    rbusObject_Release(obj);
+    rbusProperty_Release(propnulval);
+}
+
 void testObjectAPI(rbusHandle_t handle, int* countPass, int* countFail)
 {
     (void)handle;
@@ -154,6 +184,7 @@ void testObjectAPI(rbusHandle_t handle, int* countPass, int* countFail)
     testObjectName();
     testObjectProperties();
     testObjectProperty();
+    testObjectPropertyValueType();
 
     *countPass = gCountPass;
     *countFail = gCountFail;

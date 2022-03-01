@@ -20,12 +20,14 @@
 #include "rbus_subscriptions.h"
 #include "rbus_buffer.h"
 #include "rbus_handle.h"
+#include <rtMemory.h>
 #include <memory.h>
 #include <assert.h>
 #include <sys/stat.h>
 #include <sys/types.h> 
 #include <signal.h>
 
+#define VERIFY_NULL(T)         if(NULL == T){ return; }
 #define CACHE_FILE_PATH_FORMAT "%s/rbus_subs_%s"
 
 struct _rbusSubscriptions
@@ -66,6 +68,7 @@ static void subscriptionFree(void* p)
 {
     rbusSubscription_t* sub = p;
     rtListItem item;
+    VERIFY_NULL(sub);
 
     rtList_GetFront(sub->instances, &item);
     while(item)
@@ -88,7 +91,7 @@ static void subscriptionFree(void* p)
 
 void rbusSubscriptions_create(rbusSubscriptions_t* subscriptions, rbusHandle_t handle, char const* componentName, elementNode* root, const char* tmpDir)
 {
-    *subscriptions = malloc(sizeof(struct _rbusSubscriptions));
+    *subscriptions = rt_malloc(sizeof(struct _rbusSubscriptions));
     (*subscriptions)->handle = handle;
     (*subscriptions)->root = root;
     (*subscriptions)->componentName = strdup(componentName);
@@ -100,6 +103,7 @@ void rbusSubscriptions_create(rbusSubscriptions_t* subscriptions, rbusHandle_t h
 /*destroy a subscriptions registry*/
 void rbusSubscriptions_destroy(rbusSubscriptions_t subscriptions)
 {
+    VERIFY_NULL(subscriptions);
     rtList_Destroy(subscriptions->subList, subscriptionFree);
     free(subscriptions->componentName);
     free(subscriptions->tmpDir);
@@ -122,8 +126,10 @@ rbusSubscription_t* rbusSubscriptions_addSubscription(rbusSubscriptions_t subscr
         RBUSLOG_ERROR("%s: invalid token chain for %s", __FUNCTION__, eventName);
         return NULL;
     }
+    if(!subscriptions)
+        return NULL;
 
-    sub = malloc(sizeof(rbusSubscription_t));
+    sub = rt_malloc(sizeof(rbusSubscription_t));
 
     sub->listener = strdup(listener);
     sub->eventName = strdup(eventName);
@@ -154,12 +160,17 @@ rbusSubscription_t* rbusSubscriptions_getSubscription(rbusSubscriptions_t subscr
 
     RBUSLOG_DEBUG("%s: searching for %s %s", __FUNCTION__, listener, eventName);
 
+    if(!subscriptions)
+        return NULL;
+
     rtList_GetFront(subscriptions->subList, &item);
 
     while(item)
     {
         rtListItem_GetData(item, (void**)&sub);
 
+        if(!sub)
+            return NULL;
         RBUSLOG_DEBUG("%s: comparing to %s %s", __FUNCTION__, sub->listener, sub->eventName);
 
         if(subscriptionKeyCompare(sub, listener, componentId, eventName, filter) == 0)
@@ -180,6 +191,8 @@ void rbusSubscriptions_removeSubscription(rbusSubscriptions_t subscriptions, rbu
     rtListItem item;
     rbusSubscription_t* sub2;
 
+    VERIFY_NULL(subscriptions);
+    VERIFY_NULL(sub);
     RBUSLOG_DEBUG("%s: %s %s", __FUNCTION__, sub->listener, sub->eventName);
 
     rtList_GetFront(subscriptions->subList, &item);
@@ -353,11 +366,13 @@ void rbusSubscriptions_onElementDeleted(rbusSubscriptions_t subscriptions, eleme
 
 void rbusSubscriptions_onTableRowAdded(rbusSubscriptions_t subscriptions, elementNode* node)
 {
+    VERIFY_NULL(subscriptions);
     rbusSubscriptions_onElementCreated(subscriptions, node);
 }
 
 void rbusSubscriptions_onTableRowRemoved(rbusSubscriptions_t subscriptions, elementNode* node)
 {
+    VERIFY_NULL(subscriptions);
     rbusSubscriptions_onElementDeleted(subscriptions, node);
 }
 
@@ -413,6 +428,7 @@ static void rbusSubscriptions_loadCache(rbusSubscriptions_t subscriptions)
     rbusSubscription_t* sub = NULL;
     char filePath[256];
     bool needSave = false;
+    VERIFY_NULL(subscriptions);
 
     snprintf(filePath, 256, CACHE_FILE_PATH_FORMAT, subscriptions->tmpDir, subscriptions->componentName);
 
@@ -440,6 +456,7 @@ static void rbusSubscriptions_loadCache(rbusSubscriptions_t subscriptions)
     }
 
     rbusBuffer_Create(&buff);
+    VERIFY_NULL(buff);
     rbusBuffer_Reserve(buff, size);
 
     fseek(file, 0, SEEK_SET);
@@ -456,14 +473,23 @@ static void rbusSubscriptions_loadCache(rbusSubscriptions_t subscriptions)
 
     while(buff->posRead < buff->posWrite)
     {
-        sub = (rbusSubscription_t*)calloc(1, sizeof(struct _rbusSubscription));
-
+        sub = (rbusSubscription_t*)rt_try_calloc(1, sizeof(struct _rbusSubscription));
+        if(!sub)
+        {
+            RBUSLOG_ERROR("%s: failed to malloc sub", __FUNCTION__);
+            goto remove_bad_file;
+        }
         //read listener
         if(rbusBuffer_ReadUInt16(buff, &type) < 0) goto remove_bad_file;
         if(rbusBuffer_ReadUInt16(buff, &length) < 0) goto remove_bad_file;
         if(type != RBUS_STRING || length >= RBUS_MAX_NAME_LENGTH) goto remove_bad_file;
 
-        sub->listener = malloc(length);
+        sub->listener = rt_try_malloc(length);
+        if(!sub->listener)
+        {
+            RBUSLOG_ERROR("%s: failed to malloc %d bytes for listener", __FUNCTION__, length);
+            goto remove_bad_file;
+        }
         memcpy(sub->listener, buff->data + buff->posRead, length);
         buff->posRead += length;
 
@@ -472,7 +498,12 @@ static void rbusSubscriptions_loadCache(rbusSubscriptions_t subscriptions)
         if(rbusBuffer_ReadUInt16(buff, &length) < 0) goto remove_bad_file;
         if(type != RBUS_STRING || length >= RBUS_MAX_NAME_LENGTH) goto remove_bad_file;
 
-        sub->eventName = malloc(length);
+        sub->eventName = rt_try_malloc(length);
+        if(!sub->eventName)
+        {
+            RBUSLOG_ERROR("%s: failed to malloc %d bytes for eventName", __FUNCTION__, length);
+            goto remove_bad_file;
+        }
         memcpy(sub->eventName, buff->data + buff->posRead, length);
         buff->posRead += length;
 
@@ -512,8 +543,9 @@ static void rbusSubscriptions_loadCache(rbusSubscriptions_t subscriptions)
             if(rbusFilter_Decode(&sub->filter, buff) < 0) goto remove_bad_file;
         }
         else
+        {
             sub->filter = NULL;
-
+        }
         /*
             It's possible that we can load a sub from the cache for a listener whose process is no longer running.
             Example, this provider exited with active subscribers and thus still had those subs in its cache.
@@ -595,6 +627,8 @@ static void rbusSubscriptions_saveCache(rbusSubscriptions_t subscriptions)
     while(item)
     {
         rtListItem_GetData(item, (void**)&sub);
+        if(!sub)
+            return;
         rbusBuffer_WriteStringTLV(buff, sub->listener, strlen(sub->listener)+1);
         rbusBuffer_WriteStringTLV(buff, sub->eventName, strlen(sub->eventName)+1);
         rbusBuffer_WriteInt32TLV(buff, sub->componentId);
@@ -622,6 +656,8 @@ void rbusSubscriptions_resubscribeCache(rbusHandle_t handle, rbusSubscriptions_t
     rtListItem item;
     rbusSubscription_t* sub;
 
+    VERIFY_NULL(subscriptions);
+    VERIFY_NULL(el);
     RBUSLOG_DEBUG("%s: event %s", __FUNCTION__, elementName);
 
     rtList_GetFront(subscriptions->subList, &item);
@@ -630,6 +666,7 @@ void rbusSubscriptions_resubscribeCache(rbusHandle_t handle, rbusSubscriptions_t
     {
         rtListItem_GetData(item, (void**)&sub);
 
+        VERIFY_NULL(sub);
         if(sub->element == NULL && sub->tokens == NULL &&/*not already subscribed*/
           strcmp(sub->eventName, elementName) == 0)
         {
@@ -660,6 +697,7 @@ void rbusSubscriptions_handleClientDisconnect(rbusHandle_t handle, rbusSubscript
     elementNode* el = NULL;
     struct _rbusHandle* handleInfo = (struct _rbusHandle*)handle;
 
+    VERIFY_NULL(subscriptions);
     RBUSLOG_DEBUG("%s: %s", __FUNCTION__, listener);
 
     rtList_GetFront(subscriptions->subList, &item);

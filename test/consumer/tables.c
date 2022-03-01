@@ -28,6 +28,7 @@
 #include <getopt.h>
 #include <rbus.h>
 #include "../common/test_macros.h"
+#include <rtMemory.h>
 
 int getDurationTables()
 {
@@ -96,7 +97,7 @@ void resetData()
     if(tests)
         free(tests);
 
-    tests = malloc(sizeof(testData));
+    tests = rt_malloc(sizeof(testData));
 
     memcpy(tests, testData, sizeof(testData));
 }
@@ -317,6 +318,104 @@ int testSetsAndGets(rbusHandle_t handle)
     return RBUS_ERROR_SUCCESS;
 }
 
+int testGetRowNames(rbusHandle_t handle)
+{
+    int i;
+
+    printf("_test_Tables_%s\n", __FUNCTION__);
+    for(i = 0; i < numRows; i+=3)
+    {
+        int j;
+        rbusRowName_t* rows = NULL;
+        rbusRowName_t* row = NULL;
+        if(rbusTable_getRowNames(handle, tests[i].table, &rows) != RBUS_ERROR_SUCCESS)
+            return RBUS_ERROR_BUS_ERROR;
+        row = rows;
+        j = 0;
+        while(row)
+        {
+            char path[RBUS_MAX_NAME_LENGTH+10];
+            bool pass;
+            printf("testGetRowNames %d: %s %u %s\n", i+j, row->name, row->instNum, row->alias);
+            snprintf(path, RBUS_MAX_NAME_LENGTH+10, "%s%u.", tests[i+j].table, tests[i+j].num);
+            pass = strcmp(path, row->name) == 0;
+            if(!pass)
+                printf("FAIL testGetRowNames name doesn't match expected=%s actual=%s\n", path, row->name);
+            TALLY(pass);
+            pass = tests[i+j].num == row->instNum;
+            if(!pass)
+                printf("FAIL testGetRowNames instNum doesn't match expected=%u actual=%u\n", tests[i+j].num, row->instNum);
+            TALLY(pass);
+            pass = (tests[i+j].alias && row->alias && strcmp(tests[i+j].alias, row->alias) == 0) || (!tests[i+j].alias && !row->alias);
+            if(!pass)
+                printf("FAIL testGetRowNames alias doesn't match expected=%s actual=%s\n", tests[i+j].alias, row->alias);
+            TALLY(pass);
+            row = row->next;
+            j++;
+        }
+        rbusTable_freeRowNames(handle, rows);
+    }
+    return RBUS_ERROR_SUCCESS;
+}
+
+int testGetNames(rbusHandle_t handle)
+{
+    int i;
+
+    printf("_test_Tables_%s\n", __FUNCTION__);
+    for(i = 0; i < numRows; i+=3)
+    {
+        rbusElementInfo_t* elems = NULL;
+        rbusElementInfo_t* elem;
+        if(rbusElementInfo_get(handle, tests[i].table, -1, &elems) != RBUS_ERROR_SUCCESS)
+            return RBUS_ERROR_BUS_ERROR;
+        elem = elems;
+        int j = 0;
+        while(elem)
+        {
+            char path[RBUS_MAX_NAME_LENGTH+10];
+            bool pass;
+            snprintf(path, RBUS_MAX_NAME_LENGTH+10, "%s%u.", tests[i+j].table, tests[i+j].num);
+            pass = strcmp(path, elem->name) == 0;
+            printf("%s testGetNames %d: expected=%s actual=%s\n", pass ? "PASS" : "FAIL", i+j, path, elem->name);
+            TALLY(pass);
+            elem = elem->next;
+            j++;
+        }
+        rbusElementInfo_free(handle, elems);
+    }
+    {
+        rbusElementInfo_t* elems = NULL;
+        rbusElementInfo_t* elem;        
+        bool pass;
+        int numNames = 0;
+        if(rbusElementInfo_get(handle, "Device.TestProvider.Table1.1.", -1, &elems) != RBUS_ERROR_SUCCESS)
+            return RBUS_ERROR_BUS_ERROR;
+        elem = elems;
+        while(elem)
+        {
+            if(elem->type != RBUS_ELEMENT_TYPE_METHOD)
+                numNames++;
+            elem = elem->next;
+            
+        }
+        printf("%s testGetNames Device.TestProvider.Table1.1.: numNames actual=%u expected=%u\n", numNames == 2 ? "PASS" : "FAIL", numNames, 2);
+        TALLY(numNames == 2);
+        if(numNames > 0)
+        {
+            pass = strcmp("Device.TestProvider.Table1.1.Table2.", elems->name) == 0;
+            printf("%s testGetNames Device.TestProvider.Table1.1.: expected=%s actual=%s\n", pass ? "PASS" : "FAIL", "Device.TestProvider.Table1.1.Table2.", elems->name);
+        }
+        if(numNames > 1)
+        {
+            pass = strcmp("Device.TestProvider.Table1.1.data", elems->next->name) == 0;
+            printf("%s testGetNames Device.TestProvider.Table1.1.: expected=%s actual=%s\n", pass ? "PASS" : "FAIL", "Device.TestProvider.Table1.1.data", elems->next->name);
+        }
+        rbusElementInfo_free(handle, elems);
+    }
+    return RBUS_ERROR_SUCCESS;
+}
+
 int testRemoveOneRow(rbusHandle_t handle, TableRowTest* test, bool byIndex)
 {
     int rows = numRows;
@@ -385,6 +484,8 @@ void testTables(rbusHandle_t handle, int* countPass, int* countFail)
 
     if(testAddMissingRows(handle, true) != RBUS_ERROR_SUCCESS
     || testSetsAndGets(handle) != RBUS_ERROR_SUCCESS
+    || testGetRowNames(handle) != RBUS_ERROR_SUCCESS
+    || testGetNames(handle) != RBUS_ERROR_SUCCESS
     || testRemoveSomeRows(handle, true) != RBUS_ERROR_SUCCESS
     || testSetsAndGets(handle) != RBUS_ERROR_SUCCESS
     || testAddMissingRows(handle, false) != RBUS_ERROR_SUCCESS

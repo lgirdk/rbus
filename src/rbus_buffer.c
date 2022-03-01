@@ -20,11 +20,13 @@
 #include <rbus.h>
 #include "rbus_log.h"
 #include "rbus_buffer.h"
+#include "rtMemory.h"
 #include <endian.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
+#define VERIFY_NULL(T) if(NULL == T){ return; }
 #define BUFFER_BLOCK_SIZE 64
 
 #define rbusHostToLittleInt16(n) htole16(n)
@@ -84,7 +86,7 @@ double rbusLittleToHostDouble(double n)
 
 void rbusBuffer_Create(rbusBuffer_t* buff)
 {
-    (*buff) = malloc(sizeof(struct _rbusBuffer));
+    (*buff) = rt_malloc(sizeof(struct _rbusBuffer));
     (*buff)->lenAlloc = BUFFER_BLOCK_SIZE;
     (*buff)->posWrite = 0;
     (*buff)->posRead = 0;
@@ -93,6 +95,7 @@ void rbusBuffer_Create(rbusBuffer_t* buff)
 
 void rbusBuffer_Destroy(rbusBuffer_t buff)
 {
+    VERIFY_NULL(buff);
     if(buff->data != buff->block1)
     {
         assert(buff->lenAlloc > BUFFER_BLOCK_SIZE);
@@ -103,6 +106,8 @@ void rbusBuffer_Destroy(rbusBuffer_t buff)
 
 void rbusBuffer_Write(rbusBuffer_t buff, void const* data, int len)
 {
+    VERIFY_NULL(buff);
+    VERIFY_NULL(data);
     rbusBuffer_Reserve(buff, len);
     memcpy(buff->data + buff->posWrite, data, len);
     buff->posWrite += len;
@@ -110,6 +115,7 @@ void rbusBuffer_Write(rbusBuffer_t buff, void const* data, int len)
 
 void rbusBuffer_Reserve(rbusBuffer_t buff, int len)
 {
+    VERIFY_NULL(buff);
     assert(buff->data);
     int posNext = buff->posWrite+len;
     if(posNext > buff->lenAlloc)
@@ -117,13 +123,13 @@ void rbusBuffer_Reserve(rbusBuffer_t buff, int len)
         buff->lenAlloc = (posNext/BUFFER_BLOCK_SIZE+1)*BUFFER_BLOCK_SIZE;
         if(buff->data == buff->block1)
         {
-            buff->data = malloc(buff->lenAlloc);
+            buff->data = rt_malloc(buff->lenAlloc);
             if(buff->posWrite > 0)
                 memcpy(buff->data, buff->block1, buff->posWrite);
         }
         else
         {
-            buff->data = realloc(buff->data, buff->lenAlloc);
+            buff->data = rt_realloc(buff->data, buff->lenAlloc);
         }
     }
 }
@@ -226,6 +232,7 @@ void rbusBuffer_WriteDoubleTLV(rbusBuffer_t buff, double f64)
 void rbusBuffer_WriteDateTimeTLV(rbusBuffer_t buff, rbusDateTime_t const* tv)
 {
     rbusDateTime_t temp;
+    VERIFY_NULL(tv);
     temp.m_time.tm_sec      = rbusHostToLittleInt32(tv->m_time.tm_sec);
     temp.m_time.tm_min      = rbusHostToLittleInt32(tv->m_time.tm_min);
     temp.m_time.tm_hour     = rbusHostToLittleInt32(tv->m_time.tm_hour);
@@ -248,6 +255,8 @@ void rbusBuffer_WriteBytesTLV(rbusBuffer_t buff, uint8_t* bytes, int len)
 
 int rbusBuffer_Read(rbusBuffer_t const buff, void* data, int len)
 {
+    if((!buff) || (!data))
+        return -1;
     if(!(buff->posRead + len < buff->lenAlloc))
     {
         RBUSLOG_WARN("rbusBuffer_Read failed");
@@ -260,8 +269,10 @@ int rbusBuffer_Read(rbusBuffer_t const buff, void* data, int len)
 
 int rbusBuffer_ReadString(rbusBuffer_t const buff, char** s, int* len)
 {
+    if(!buff)
+        return -1;
     *len = buff->posRead;
-    *s = malloc(buff->posRead+1);/*TODO is +1 needed?*/
+    *s = rt_malloc(buff->posRead+1);/*TODO is +1 needed?*/
     return rbusBuffer_Read(buff, *s, *len);
 }
 
@@ -360,6 +371,8 @@ int rbusBuffer_ReadDouble(rbusBuffer_t const buff, double* f64)
 int rbusBuffer_ReadDateTime(rbusBuffer_t const buff, rbusDateTime_t* tv)
 {
     rbusDateTime_t temp;
+    if(!tv)
+        return -1;
     int rc = rbusBuffer_Read(buff, &temp, sizeof(rbusDateTime_t));
     tv->m_time.tm_sec   = rbusLittleToHostInt32(temp.m_time.tm_sec);
     tv->m_time.tm_min   = rbusLittleToHostInt32(temp.m_time.tm_min);
@@ -378,7 +391,9 @@ int rbusBuffer_ReadDateTime(rbusBuffer_t const buff, rbusDateTime_t* tv)
 
 int rbusBuffer_ReadBytes(rbusBuffer_t const buff, uint8_t** bytes, int* len)
 {
+    if(!buff)
+        return -1;
     *len = buff->posWrite;
-    *bytes = malloc(buff->posWrite);
+    *bytes = rt_malloc(buff->posWrite);
     return rbusBuffer_Read(buff, bytes, buff->posWrite);
 }

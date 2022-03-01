@@ -95,6 +95,9 @@ typedef struct _rbusHandle* rbusHandle_t;
 ///  @brief     The maximum length a name can be for any element.
 #define RBUS_MAX_NAME_LENGTH 256
 
+///  @brief     The maximum hierarchical depth (e.g. the max token count) a name can be for any element.
+#define RBUS_MAX_NAME_DEPTH 16
+
 ///  @brief     All possible error codes this API can generate.
 typedef enum _rbusError
 {
@@ -302,6 +305,21 @@ typedef struct _rbusEventSubscription
 
 /** @} */
 
+/** @addtogroup Tables
+ *  @{
+ */
+
+/// @brief rbusRowName_t
+typedef struct _rbusRowName
+{
+    char const* name;           /** Fully qualified row name */
+    uint32_t instNum;           /** Instance number of the row */
+    char const* alias;          /** Alias of the row.  NULL if no alias exists */
+    struct _rbusRowName* next;  /** The next row name in this list */
+} rbusRowName_t;
+
+/** @} */
+
 /** @fn typedef void (* rbusMethodAsyncRespHandler_t)(
  *          rbusHandle_t handle,
  *          char* methodName
@@ -330,7 +348,7 @@ typedef void (*rbusMethodAsyncRespHandler_t)(
 /// @brief rbusElementType_t indicates the type of data elements which can be registered with RBus
 typedef enum 
 {
-    RBUS_ELEMENT_TYPE_PROPERTY  = 1,    /**< Property Element. 
+    RBUS_ELEMENT_TYPE_PROPERTY = 1,     /**< Property Element. 
                                              Sample names: x.y, p.q.{i}.r, aaa, etc 
                                              Can also be monitored and event 
                                              notifications be obtained in the 
@@ -550,6 +568,8 @@ typedef struct
                                              callback can be NULL, if no usage*/
 }rbusDataElement_t;
 
+/** @} */
+
 /**
  * @enum        rbusStatus_t
  * @brief       The type of events which can be subscribed to or published
@@ -597,6 +617,32 @@ typedef void (*rbusLogHandler)(
     int threadId,
     char* message);
 
+/** @} */
+
+/** @addtogroup Consumer
+ *  @{
+ */
+
+typedef enum
+{
+        RBUS_ACCESS_GET = 1,
+        RBUS_ACCESS_SET = 2,
+        RBUS_ACCESS_ADDROW = 4,
+        RBUS_ACCESS_REMOVEROW = 8,
+        RBUS_ACCESS_SUBSCRIBE = 16,
+        RBUS_ACCESS_INVOKE = 32
+} rbusAccess_t;
+
+typedef struct _rbusElementInfo
+{
+    char const* name;               /** Fully qualified element name */
+    char const* component;          /** Name of the component providing this element */
+    rbusElementType_t type;         /** The type of element */
+    uint32_t access;                /** rbusAccess_t flags OR'd*/
+    struct _rbusElementInfo* next;  /** The next name in this list */    
+} rbusElementInfo_t;
+
+/** @} */
 /** @} */
 
 /** @addtogroup Initialization
@@ -1064,6 +1110,85 @@ rbusError_t rbusTable_removeRow(
     rbusHandle_t handle,
     char const* rowName); 
 
+/** @fn rbusError_t rbusTable_getRowNames(
+ *          busHandle handle, 
+ *          char const* tableName,
+ *          rbusRowName_t** rowNames)
+ *  @brief Get a list of the row names in a table
+ *
+ * This method allows a consumer to get the names of all rows on a table.
+ * Used by:  Any component that needs to know the rows in a table.
+ *  @param  handle          Bus Handle
+ *  @param  tableName       The name of a table (e.g. "Device.IP.Interface.")
+ *  @param  rowNames        Output parameter where a list of rbusRowName_t structures is returned
+ *  @return RBus error code as defined by rbusError_t.
+ *  Possible values are: RBUS_ERROR_INVALID_INPUT
+ *  @ingroup Tables
+ */
+rbusError_t rbusTable_getRowNames(
+    rbusHandle_t handle,
+    char const* tableName,
+    rbusRowName_t** rowNames);
+
+/** @fn rbusError_t rbusTable_FreeRowNames(
+ *          rbusHandle handle, 
+ *          rbusRowName_t* rows)
+ *  @brief Free the row name list returned from rbusTable_getRowNames
+ *
+ * This method is used to free the memory for the row name lists returned from rbusTable_getRowNames.
+ * Used by:  Any component that uses the busTable_getRowNames method
+ *  @param  handle          Bus Handle
+ *  @param  rows            The row name list returned from rbusTable_getRowNames
+ *  @return RBus error code as defined by rbusError_t.
+ *  Possible values are: RBUS_ERROR_INVALID_INPUT
+ *  @ingroup Tables
+ */
+rbusError_t rbusTable_freeRowNames(
+    rbusHandle_t handle, 
+    rbusRowName_t* rows);
+
+/** @fn rbusError_t rbusElementInfo_get(
+ *          busHandle handle, 
+ *          char const* elemName,
+ *          int depth,
+ *          rbusElementInfo_t** elemInfo);
+ *  @brief Get a info on the elements at or inside the give
+ *
+ * This method allows a consumer to get the information on all elements inside an object.  
+  * Used by:  Any component that needs to know the info on the elements inside an object.
+ *  @param  handle          Bus Handle
+ *  @param  elemName        The name of the element to start from
+ *  @param  depth           Depth control flag
+ *                              depth = 0: only the start element
+ *                              depth = RBUS_MAX_NAME_DEPTH: the start element, its children, grand-children, ... to max depth
+ *                              depth > 0: the start element, its children, grand-children, ... to the given depth
+ *                              depth < 0: only the elements at the exact depth level of abs(depth)  (e.g. -1 would return only the next level elements)
+ *  @param  elemInfo        Output element info list
+ *  @return RBus error code as defined by rbusError_t.
+ *  Possible values are: RBUS_ERROR_INVALID_INPUT
+ */
+rbusError_t rbusElementInfo_get(
+    rbusHandle_t handle,
+    char const* elemName,
+    int depth,
+    rbusElementInfo_t** elemInfo);
+
+/** @fn rbusError_t rbusElementInfo_free(
+ *          busHandle handle, 
+ *          busElementInfo_t* elemInfo);
+ *  @brief Free the list element info list returned from rbusElementInfo_get
+ *
+ * This method allows a consumer to free the element info list returned from the rbusElementInfo_get method.
+ * Used by:  Any component that uses the rbusElementInfo_get method
+ *  @param  handle          Bus Handle
+ *  @param  elemInfoList    The element info list return from rbusElementInfo_get
+ *  @return RBus error code as defined by rbusError_t.
+ *  Possible values are: RBUS_ERROR_INVALID_INPUT
+ */
+rbusError_t rbusElementInfo_free(
+    rbusHandle_t handle, 
+    rbusElementInfo_t* elemInfo);
+
 /** @} */
 
 /** @addtogroup Providers
@@ -1073,8 +1198,8 @@ rbusError_t rbusTable_removeRow(
 /** @fn rbusError_t rbusTable_registerRow(
  *          busHandle handle, 
  *          char const* tableName,
- *          char const* aliasName,
- *          uint32_t instNum)
+  *         uint32_t instNum,
+  *         char const* aliasName)
  *  @brief Register a row that the provider has added to its own table.
  *
  * This method allows a provider to register a row that it adds to its own table.
@@ -1084,8 +1209,8 @@ rbusError_t rbusTable_removeRow(
  * Used by:  Any provider that adds a row to its own table.
  *  @param  handle          Bus Handle
  *  @param  tableName       The name of a table (e.g. "Device.IP.Interface.")
- *  @param  aliasName       An optional name for the new row.  Must be unique in the table.  Can be NULL.
  *  @param  instNum         The unique instance number the provider has assigned this row.
+ *  @param  aliasName       An optional name for the new row.  Must be unique in the table.  Can be NULL.
  *  @return RBus error code as defined by rbusError_t.
  *  Possible values are: RBUS_ERROR_INVALID_INPUT
  *  @ingroup Tables
@@ -1093,8 +1218,8 @@ rbusError_t rbusTable_removeRow(
 rbusError_t rbusTable_registerRow(
     rbusHandle_t handle,
     char const* tableName,
-    char const* aliasName,
-    uint32_t instNum);
+    uint32_t instNum,
+    char const* aliasName);
 
 /** @fn rbusError_t rbusTable_unregisterRow(
  *          busHandle handle, 

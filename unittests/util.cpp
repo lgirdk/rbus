@@ -47,6 +47,7 @@ void getCompileTime(struct tm *t)
 {
   char date_time_macro[32]={0};
   char *token = NULL;
+  char* saveptr = NULL;
 
   snprintf(date_time_macro,sizeof(date_time_macro),"%s %s",__DATE__,__TIME__);
 
@@ -56,7 +57,7 @@ void getCompileTime(struct tm *t)
   t->tm_min = -1;
   t->tm_hour = -1;
 
-  token = strtok(date_time_macro, " ");
+  token = strtok_r(date_time_macro, " ", &saveptr);
 
   while(NULL != token)
   {
@@ -74,9 +75,9 @@ void getCompileTime(struct tm *t)
       t->tm_sec = atoi(token);
 
     if(0 == t->tm_year)
-      token = strtok(NULL, " ");
+      token = strtok_r(NULL, " ", &saveptr);
     else
-      token = strtok(NULL, ":");
+      token = strtok_r(NULL, ":", &saveptr);
   }
 
   return;

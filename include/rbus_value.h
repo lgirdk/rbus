@@ -23,6 +23,14 @@
  * @defgroup    rbusValue
  * @brief       An rbus value is a variant data type representing a fundamental piece of data passed through rbus.
  *              An rbusValue_t is a reference counted handle to an rbus value.  
+  * 
+ * This API is not thread-safe.  
+ * All instances of types rbusValue_t, rbusProperty_t, and rbusObject_t are referenced counted.
+ * Instances of these types may have private references to other instances of these types.
+ * There are read methods in this api that return references to these private instances.
+ * There are write methods in this api that release current references and retain new ones. 
+ * When this happens any reference held by the user becomes unlinked from the parent instance.
+ * The instance will also be destroyed unless the user retains it for themselves.
  * @{
  */
 
@@ -66,6 +74,14 @@ typedef enum
     RBUS_NONE
 } rbusValueType_t;
 
+typedef enum
+{
+    RBUS_VALUE_ERROR_SUCCESS = 0,
+    RBUS_VALUE_ERROR_TYPE,
+    RBUS_VALUE_ERROR_NOT_FOUND,
+    RBUS_VALUE_ERROR_NULL
+} rbusValueError_t;
+
 typedef struct _rbusTimeZone {
     int m_tzhour;
     int m_tzmin;
@@ -100,10 +116,42 @@ typedef struct _rbusProperty* rbusProperty_t;
  *          This automatically retains ownership of the value. 
  *          It's the caller's responsibility to release ownership by
  *          calling rbusValue_Release once it's done with it.
- *  @param  pvalue reference to an address where the new value will be assigned.
+ *  @param  Optional pvalue reference to an address where the new value will be assigned.
  *          The caller is responsible for releasing the value with rbusValue_Release
+ *  @return The new value
  */
-void rbusValue_Init(rbusValue_t* pvalue);
+rbusValue_t rbusValue_Init(rbusValue_t* pvalue);
+
+/** @name rbusValue_Get[Type]
+ * @brief These functions returns the data stored in the value according to their type.
+ *        The data is not coerced to the type, thus the caller should ensure
+ *        the value's actual type matches the function being called.  The caller can 
+ *        call rbusValue_GetType to get the type.
+ * @param value A value to get data from.
+ * @return The data as a specific type. This is meant to be a const accessor. 
+ *         To avoid large copies, if the type is a buffer or struct type, 
+ *         a const pointer to the actual data is returned. 
+ */
+///@{
+rbusValue_t rbusValue_InitBoolean(bool b);
+rbusValue_t rbusValue_InitChar(char c);
+rbusValue_t rbusValue_InitByte(unsigned char u);
+rbusValue_t rbusValue_InitInt8(int8_t i8);
+rbusValue_t rbusValue_InitUInt8(uint8_t u8);
+rbusValue_t rbusValue_InitInt16(int16_t i16);
+rbusValue_t rbusValue_InitUInt16(uint16_t u16);
+rbusValue_t rbusValue_InitInt32(int32_t i32);
+rbusValue_t rbusValue_InitUInt32(uint32_t u32);
+rbusValue_t rbusValue_InitInt64(int64_t i64);
+rbusValue_t rbusValue_InitUInt64(uint64_t u64);
+rbusValue_t rbusValue_InitSingle(float f32);
+rbusValue_t rbusValue_InitDouble(double f64);
+rbusValue_t rbusValue_InitTime(rbusDateTime_t const* tv);
+rbusValue_t rbusValue_InitString(char const* s);
+rbusValue_t rbusValue_InitBytes(uint8_t const* bytes, int len);
+rbusValue_t rbusValue_InitProperty(struct _rbusProperty* property);
+rbusValue_t rbusValue_InitObject(struct _rbusObject* object);
+///@}
 
 /** @fn void rbusValue_Retain(rbusValue_t value)
  *  @brief Take shared ownership of the value.  This allows a value to have 
@@ -121,48 +169,7 @@ void rbusValue_Retain(rbusValue_t value);
  */
 void rbusValue_Release(rbusValue_t value);
 
-///  @brief rbusValue_FromBoolean initialize a value's type to RBUS_BOOLEAN and data to the supplied bool 
-rbusValue_t rbusValue_FromBoolean(bool b);
-
-///  @brief rbusValue_FromInt16 initialize a value's type to RBUS_INT16 and data to the supplied int16_t 
-rbusValue_t rbusValue_FromInt16(int16_t i16);
-
-///  @brief rbusValue_FromUInt16 initialize a value's type to RBUS_UINT16 and data to the supplied uint16_t 
-rbusValue_t rbusValue_FromUInt16(uint16_t u16);
-
-///  @brief rbusValue_FromInt32 initialize a value's type to RBUS_INT32 and data to the supplied int32_t 
-rbusValue_t rbusValue_FromInt32(int32_t i32);
-
-///  @brief rbusValue_FromUInt32 initialize a value's type to RBUS_UINT32 and data to the supplied uint32_t 
-rbusValue_t rbusValue_FromUInt32(uint32_t u32);
-
-///  @brief rbusValue_FromInt64 initialize a value's type to RBUS_INT64 and data to the supplied int64_t 
-rbusValue_t rbusValue_FromInt64(int64_t i64);
-
-///  @brief rbusValue_FromUInt64 initialize a value's type to RBUS_UINT64 and data to the supplied uint64_t 
-rbusValue_t rbusValue_FromUInt64(uint64_t u64);
-
-///  @brief rbusValue_FromSingle initialize a value's type to RBUS_SINGLE and data to the supplied float 
-rbusValue_t rbusValue_FromSingle(float f32);
-
-///  @brief rbusValue_FromDouble initialize a value's type to RBUS_DOUBLE and data to the supplied double 
-rbusValue_t rbusValue_FromDouble(double f64);
-
-///  @brief rbusValue_FromTime initialize a value's type to RBUS_DATETIME and data to the supplied timeval 
-rbusValue_t rbusValue_FromTime(rbusDateTime_t* tv);
-
-///  @brief rbusValue_FromString initialize a value's type to RBUS_STRING and data to the supplied string 
-///         s should be a null terminated c string
-rbusValue_t rbusValue_FromString(char const* s);
-
-///  @brief rbusValue_FromBytes initialize a value's type to RBUS_BYTES and data to the supplied byte array
-rbusValue_t rbusValue_FromBytes(uint8_t const* bytes, int len);
-
-///  @brief rbusValue_FromProperty initialize a value's type to RBUS_PROPERTY and data to the supplied property
-rbusValue_t rbusValue_FromProperty(struct _rbusProperty* propert);
-
-///  @brief rbusValue_FromObject initialize a value's type to RBUS_OBJECT and data to the supplied object
-rbusValue_t rbusValue_FromObject(struct _rbusObject* object);
+void rbusValue_ReleaseMany(int count, ...);
 
 /** @fn void rbusValue_Compare(rbusValue_t value1, rbusValue_t value2)
  *  @brief Compare two values for equality.  They are equal if both the type and data are equal.
@@ -222,7 +229,7 @@ char* rbusValue_ToDebugString(rbusValue_t value, char* buf, size_t buflen);
 rbusValueType_t rbusValue_GetType(rbusValue_t value);
 
 /** @name rbusValue_Get[Type]
- * @brief These functions returns the data stored in the value according to their type.
+ * @brief These functions return the data stored in the value by type.
  *        The data is not coerced to the type, thus the caller should ensure
  *        the value's actual type matches the function being called.  The caller can 
  *        call rbusValue_GetType to get the type.
@@ -233,44 +240,52 @@ rbusValueType_t rbusValue_GetType(rbusValue_t value);
  */
 ///@{
 bool rbusValue_GetBoolean(rbusValue_t value);
-
 char rbusValue_GetChar(rbusValue_t value);
-
 unsigned char rbusValue_GetByte(rbusValue_t value);
-
 int8_t rbusValue_GetInt8(rbusValue_t value);
-
 uint8_t rbusValue_GetUInt8(rbusValue_t value);
-
 int16_t rbusValue_GetInt16(rbusValue_t value);
-
 uint16_t rbusValue_GetUInt16(rbusValue_t value);
-
 int32_t rbusValue_GetInt32(rbusValue_t value);
-
 uint32_t rbusValue_GetUInt32(rbusValue_t value);
-
 int64_t rbusValue_GetInt64(rbusValue_t value);
-
 uint64_t rbusValue_GetUInt64(rbusValue_t value);
-
 float rbusValue_GetSingle(rbusValue_t value);
-
 double rbusValue_GetDouble(rbusValue_t value);
-
 rbusDateTime_t const* rbusValue_GetTime(rbusValue_t value);
-
-/// @param len optional param to retrieve the length of the string being returned(not including null terminator).
-/// @return A c-style, null terminated string.  This is a pointer to the actual data thus no allocation or copy is done.
 char const* rbusValue_GetString(rbusValue_t value, int* len);
-
-/// @param len optional param to retrieve the length of the byte buffer being returned
-/// @return A bytes array.  This is a pointer to the actual data thus no allocation or copy is done.
 uint8_t const* rbusValue_GetBytes(rbusValue_t value, int* len);
-
 struct _rbusProperty* rbusValue_GetProperty(rbusValue_t value);
-
 struct _rbusObject* rbusValue_GetObject(rbusValue_t value);
+///@}
+
+/** @name rbusValue_Get[Type]Ex
+* @brief These functions check that the type being requested matches the value's actual type,
+ *        and returns the data if it does.  If the type does not match, an error is returned.
+  * @param value A value to get data from.
+ * @param value Type specific data to return
+ * @return error code as defined by rbusValueError_t.
+ *        Possible errors are: RBUS_VALUE_ERROR_TYPE
+ */
+///@{
+rbusValueError_t rbusValue_GetBooleanEx(rbusValue_t value, bool* b);
+rbusValueError_t rbusValue_GetCharEx(rbusValue_t v, char* c);
+rbusValueError_t rbusValue_GetByteEx(rbusValue_t v, unsigned char* u);
+rbusValueError_t rbusValue_GetInt8Ex(rbusValue_t v, int8_t* i8);
+rbusValueError_t rbusValue_GetUInt8Ex(rbusValue_t v, uint8_t* u8);
+rbusValueError_t rbusValue_GetInt16Ex(rbusValue_t value, int16_t* i16);
+rbusValueError_t rbusValue_GetUInt16Ex(rbusValue_t value, uint16_t* u16);
+rbusValueError_t rbusValue_GetInt32Ex(rbusValue_t value, int32_t* i32);
+rbusValueError_t rbusValue_GetUInt32Ex(rbusValue_t value, uint32_t* u32);
+rbusValueError_t rbusValue_GetInt64Ex(rbusValue_t value, int64_t* i64);
+rbusValueError_t rbusValue_GetUInt64Ex(rbusValue_t value, uint64_t* u64);
+rbusValueError_t rbusValue_GetSingleEx(rbusValue_t value, float* f32);
+rbusValueError_t rbusValue_GetDoubleEx(rbusValue_t value, double* f64);
+rbusValueError_t rbusValue_GetTimeEx(rbusValue_t value, rbusDateTime_t const** tv);
+rbusValueError_t rbusValue_GetStringEx(rbusValue_t value, char const** s, int* len);
+rbusValueError_t rbusValue_GetBytesEx(rbusValue_t value, uint8_t const** bytes, int* len);
+rbusValueError_t rbusValue_GetPropertyEx(rbusValue_t value, struct _rbusProperty** property);
+rbusValueError_t rbusValue_GetObjectEx(rbusValue_t value, struct _rbusObject** object);
 ///@}
 
 /** @name rbusValue_Set[Type]
@@ -280,47 +295,26 @@ struct _rbusObject* rbusValue_GetObject(rbusValue_t value);
  */
 ///@{
 void rbusValue_SetBoolean(rbusValue_t value, bool b);
-
 void rbusValue_SetChar(rbusValue_t v, char c);
-
 void rbusValue_SetByte(rbusValue_t v, unsigned char u);
-
 void rbusValue_SetInt8(rbusValue_t v, int8_t i8);
-
 void rbusValue_SetUInt8(rbusValue_t v, uint8_t u8);
-
 void rbusValue_SetInt16(rbusValue_t value, int16_t i16);
-
 void rbusValue_SetUInt16(rbusValue_t value, uint16_t u16);
-
 void rbusValue_SetInt32(rbusValue_t value, int32_t i32);
-
 void rbusValue_SetUInt32(rbusValue_t value, uint32_t u32);
-
 void rbusValue_SetInt64(rbusValue_t value, int64_t i64);
-
 void rbusValue_SetUInt64(rbusValue_t value, uint64_t u64);
-
 void rbusValue_SetSingle(rbusValue_t value, float f32);
-
 void rbusValue_SetDouble(rbusValue_t value, double f64);
-
-void rbusValue_SetTime(rbusValue_t value, rbusDateTime_t* tv);
-
-/// @param s        a c-style, null terminated string which is duplicated/copied to the value.
+void rbusValue_SetTime(rbusValue_t value, rbusDateTime_t const* tv);
 void rbusValue_SetString(rbusValue_t value, char const* s);
-
-/// @param bytes    a bytes array which is duplicated/copied to the value.
-/// @param len      the length of the array or the number of bytes to copy.
 void rbusValue_SetBytes(rbusValue_t value, uint8_t const* bytes, int len);
-
 void rbusValue_SetProperty(rbusValue_t value, struct _rbusProperty* property);
-
-void rbusValue_Swap(rbusValue_t* v1, rbusValue_t* v2);
-
 void rbusValue_SetObject(rbusValue_t value, struct _rbusObject* object);
 ///@}
 
+void rbusValue_Swap(rbusValue_t* v1, rbusValue_t* v2);
 ///  @brief rbusValue_SetFromString sets the value's type to given type and data to appropriate by converting the string
 /** 
  *  @brief Sets the type and data of a value by converting a string representation of the data to a specific typed data.

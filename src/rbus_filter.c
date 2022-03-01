@@ -19,11 +19,13 @@
 
 #include <stdlib.h>
 #include <rtRetainable.h>
+#include <rtMemory.h>
 #include "rbus_log.h"
 #include <assert.h>
 #include "rbus_filter.h"
 #include "rbus_buffer.h"
 
+#define VERIFY_NULL(T) if(NULL == T){ return; }
 typedef struct _rbusFilter_LogicExpression* rbusFilter_LogicExpression_t;
 
 struct _rbusFilter_RelationExpression
@@ -52,7 +54,7 @@ struct _rbusFilter
 
 void rbusFilter_InitRelation(rbusFilter_t* filter, rbusFilter_RelationOperator_t op, rbusValue_t value)
 {
-    (*filter) = malloc(sizeof(struct _rbusFilter));
+    (*filter) = rt_malloc(sizeof(struct _rbusFilter));
 
     (*filter)->type = RBUS_FILTER_EXPRESSION_RELATION;
     (*filter)->e.relation.op = op;
@@ -64,7 +66,7 @@ void rbusFilter_InitRelation(rbusFilter_t* filter, rbusFilter_RelationOperator_t
 
 void rbusFilter_InitLogic(rbusFilter_t* filter, rbusFilter_LogicOperator_t op, rbusFilter_t left, rbusFilter_t right)
 {
-    (*filter) = malloc(sizeof(struct _rbusFilter));
+    (*filter) = rt_malloc(sizeof(struct _rbusFilter));
 
     (*filter)->type = RBUS_FILTER_EXPRESSION_LOGIC;
     (*filter)->e.logic.op = op;
@@ -82,6 +84,7 @@ void rbusFilter_InitLogic(rbusFilter_t* filter, rbusFilter_LogicOperator_t op, r
 void rbusFilter_Destroy(rtRetainable* r)
 {
     rbusFilter_t filter = (rbusFilter_t)r;
+    VERIFY_NULL(filter);
 
     if(filter->type == RBUS_FILTER_EXPRESSION_RELATION)
     {
@@ -100,16 +103,20 @@ void rbusFilter_Destroy(rtRetainable* r)
 
 void rbusFilter_Retain(rbusFilter_t filter)
 {
+    VERIFY_NULL(filter);
     rtRetainable_retain(filter);
 }
 
 void rbusFilter_Release(rbusFilter_t filter)
 {
+    VERIFY_NULL(filter);
     rtRetainable_release(filter, rbusFilter_Destroy);
 }
 
 bool rbusFilter_RelationApply(struct _rbusFilter_RelationExpression* ex, rbusValue_t value)
 {
+    if(!ex)
+        return false;
     int c = rbusValue_Compare(value, ex->value);
     switch(ex->op)
     {
@@ -134,6 +141,8 @@ bool rbusFilter_LogicApply(struct _rbusFilter_LogicExpression* ex, rbusValue_t v
 {
     bool left = false, right = false;
 
+    if(!ex)
+        return false;
     left = rbusFilter_Apply(ex->left, value);
 
     if(ex->op != RBUS_FILTER_OPERATOR_NOT)
@@ -156,6 +165,8 @@ bool rbusFilter_LogicApply(struct _rbusFilter_LogicExpression* ex, rbusValue_t v
 
 bool rbusFilter_Apply(rbusFilter_t filter, rbusValue_t value)
 {
+    if(!filter)
+        return false;
     if(filter->type == RBUS_FILTER_EXPRESSION_RELATION)
         return rbusFilter_RelationApply(&filter->e.relation, value);
     else if(filter->type == RBUS_FILTER_EXPRESSION_LOGIC)
@@ -166,36 +177,49 @@ bool rbusFilter_Apply(rbusFilter_t filter, rbusValue_t value)
 
 rbusFilter_ExpressionType_t rbusFilter_GetType(rbusFilter_t filter)
 {
+    if(!filter)
+	return -1;
     return filter->type;
 }
 
 rbusFilter_RelationOperator_t rbusFilter_GetRelationOperator(rbusFilter_t filter)
 {
+    if(!filter)
+	return -1;
     return filter->e.relation.op;
 }
 
 rbusValue_t rbusFilter_GetRelationValue(rbusFilter_t filter)
 {
+    if(!filter)
+        return NULL;
     return filter->e.relation.value;
 }
 
 rbusFilter_LogicOperator_t rbusFilter_GetLogicOperator(rbusFilter_t filter)
 {
+    if(!filter)
+	return -1;
     return filter->e.logic.op;
 }
 
 rbusFilter_t rbusFilter_GetLogicLeft(rbusFilter_t filter)
 {
+    if(!filter)
+        return NULL;
     return filter->e.logic.left;
 }
 
 rbusFilter_t rbusFilter_GetLogicRight(rbusFilter_t filter)
 {
+    if(!filter)
+        return NULL;
     return filter->e.logic.right;
 }
 
 void rbusFilter_Encode(rbusFilter_t filter, rbusBuffer_t buff)
 {
+    VERIFY_NULL(filter);
     rbusBuffer_WriteUInt32TLV(buff, filter->type);
     if(filter->type == RBUS_FILTER_EXPRESSION_RELATION)
     {
@@ -323,6 +347,8 @@ int rbusFilter_Compare(rbusFilter_t filter1, rbusFilter_t filter2)
 
 void rbusFilter_fwrite(rbusFilter_t filter, FILE* fout, rbusValue_t value)
 {
+    VERIFY_NULL(filter);
+    VERIFY_NULL(fout);
     if(filter->type == RBUS_FILTER_EXPRESSION_RELATION)
     {
         if(value)

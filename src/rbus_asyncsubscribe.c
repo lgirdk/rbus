@@ -5,6 +5,7 @@
 #include "rbus_log.h"
 #include <rtTime.h>
 #include <rtList.h>
+#include <rtMemory.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include <string.h>
@@ -18,6 +19,7 @@
     RBUSLOG_ERROR("Error %d:%s running command " #CMD, err, strerror(err)); \
   } \
 }
+#define VERIFY_NULL(T) if(NULL == T){ return; }
 #define LOCK() ERROR_CHECK(pthread_mutex_lock(&gRetrier->mutexQueue))
 #define UNLOCK() ERROR_CHECK(pthread_mutex_unlock(&gRetrier->mutexQueue))
 
@@ -48,6 +50,8 @@ static AsyncSubscribeRetrier_t* gRetrier = NULL;
 static void rbusAsyncSubscribeRetrier_FreeSubscription(void *pitem)
 {
     AsyncSubscription_t* sub = (AsyncSubscription_t*)pitem;
+    if(!sub)
+        return;
     rbusMessage_Release(sub->payload);
     free(pitem);
 }
@@ -55,7 +59,8 @@ static void rbusAsyncSubscribeRetrier_FreeSubscription(void *pitem)
 static int rbusAsyncSubscribeRetrier_CompareHandle(const void *pitem, const void *phandle)
 {
     AsyncSubscription_t* item = (AsyncSubscription_t*)pitem;
-
+    if((!item)||(!phandle))
+        return 1;
     if(item->subscription->handle == phandle)
         return 0;
     else
@@ -66,6 +71,8 @@ static int rbusAsyncSubscribeRetrier_CompareSubscription(const void *pitem, cons
 {
     AsyncSubscription_t* item = (AsyncSubscription_t*)pitem;
     rbusEventSubscription_t* sub = (rbusEventSubscription_t*)psub;
+    if((!item)||(!sub))
+        return 1;
 
     if( item->subscription->handle == sub->handle &&
         strcmp(item->subscription->eventName, sub->eventName) == 0 && 
@@ -80,7 +87,7 @@ static int rbusAsyncSubscribeRetrier_DetermineNextSendTime(rtTime_t* nextSendTim
     rtTime_t now;
     rtListItem li;
     char tbuff[200];
-  
+
     rtList_GetFront(gRetrier->items, &li);
 
     //find the earliest nextRetryTime using nextSendTime to compare and store
@@ -284,7 +291,7 @@ static void rbusAsyncSubscribeRetrier_Create()
 
     RBUSLOG_INFO("%s enter", __FUNCTION__);
 
-    gRetrier = malloc(sizeof(struct AsyncSubscribeRetrier_t));
+    gRetrier = rt_malloc(sizeof(struct AsyncSubscribeRetrier_t));
 
     gRetrier->isRunning = true;
     rtList_Create(&gRetrier->items);
@@ -330,13 +337,14 @@ void rbusAsyncSubscribe_AddSubscription(rbusEventSubscription_t* subscription, r
 {
     int rc;
     char tbuff[50];
+    VERIFY_NULL(subscription);
 
     if(!gRetrier)
     {
         rbusAsyncSubscribeRetrier_Create();
     }
 
-    AsyncSubscription_t* item = malloc(sizeof(struct AsyncSubscription_t));
+    AsyncSubscription_t* item = rt_malloc(sizeof(struct AsyncSubscription_t));
 
     rbusMessage_Retain(payload);
 
@@ -362,6 +370,7 @@ void rbusAsyncSubscribe_RemoveSubscription(rbusEventSubscription_t* subscription
 {
     if(!gRetrier)
         return;
+    VERIFY_NULL(subscription);
     LOCK();
     rtList_RemoveItemByCompare(gRetrier->items, subscription, 
         rbusAsyncSubscribeRetrier_CompareSubscription, rbusAsyncSubscribeRetrier_FreeSubscription);

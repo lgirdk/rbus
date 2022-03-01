@@ -24,7 +24,9 @@
 #include <assert.h>
 #include "rbus_element.h"
 #include "rbus_subscriptions.h"
+#include <rtMemory.h>
 
+#define VERIFY_NULL(T) if(NULL == T){ return; }
 #define DEBUG_ELEMENTS 0
 
 elementNode* pruneNode = NULL;
@@ -49,13 +51,14 @@ elementNode* getEmptyElementNode(void)
 {
     elementNode* node;
 
-    node = (elementNode *) calloc(1, sizeof(elementNode));
+    node = (elementNode *) rt_calloc(1, sizeof(elementNode));
     node->type = 0;//default of zero means OBJECT and if this gets used as a leaf, it will get update to be a either parameter, event, or method
     return node;
 }
 
 static void freeElementRecurse(elementNode* node)
 {
+    VERIFY_NULL(node);
     elementNode* child = node->child;
 
     while(child)
@@ -92,6 +95,7 @@ static void freeElementRecurse(elementNode* node)
 
 void freeElementNode(elementNode* node)
 {
+    VERIFY_NULL(node);
     elementNode* parent = node->parent;
     elementNode* child = node->child;
 
@@ -173,13 +177,15 @@ static void createElementChain(elementNode* node, elementNode*** chainOut, int* 
     elementNode* parent;
     int num = 0;
     int i = 0;
+
+    VERIFY_NULL(node);
     parent = node;
     while(parent)
     {
         num++;
         parent = parent->parent;
     }
-    chain = malloc(num * sizeof(elementNode*));
+    chain = rt_malloc(num * sizeof(elementNode*));
     parent = node;
     while(parent)
     {
@@ -207,7 +213,7 @@ elementNode* insertElement(elementNode* root, rbusDataElement_t* elem)
     int ret = 0, createChild = 0;
     char buff[RBUS_MAX_NAME_LENGTH];
 
-    if(currentNode == NULL)
+    if(currentNode == NULL || elem == NULL)
     {
         return NULL;
     }
@@ -547,12 +553,15 @@ elementNode* retrieveInstanceElement(elementNode* root, const char* elmentName)
 
 static void removeElementInternal(elementNode* rowNode, elementNode** chain, int numChain)
 {
+    VERIFY_NULL(rowNode);
     elementNode* currentNode = rowNode;
     int i = 0;
 #if DEBUG_ELEMENTS
     printf("\n\nremoveElementInternal %s\n", rowNode->fullName);
-    for(i = 0; i < numChain; ++i)
+    for(i = 0; i < numChain; ++i){
+        VERIFY_NULL(chain[i]);
         printf( "Chain %d: %s\n", i, chain[i]->name );
+    }
     i = 0; 
 #endif
     while(currentNode && i < numChain)
@@ -645,6 +654,7 @@ void removeElement(elementNode* element)
 {
     elementNode** chain = NULL;
     int numChain = 0;
+    VERIFY_NULL(element);
     RBUSLOG_DEBUG("removeElement %s\n", element->fullName);
     createElementChain(element, &chain, &numChain);
     if(numChain > 1)
@@ -707,8 +717,10 @@ static void fprintElement(FILE* f, elementNode* node, int level)
 
 void fprintRegisteredElements(FILE* f, elementNode* root, int level)
 {
+    VERIFY_NULL(f);
     elementNode* child = root;
     elementNode* sibling = NULL;
+    VERIFY_NULL(child);
 
     if(child)
     {
@@ -732,6 +744,7 @@ void fprintRegisteredElements(FILE* f, elementNode* root, int level)
 
 void addElementSubscription(elementNode* node, rbusSubscription_t* sub, bool checkIfExists)
 {
+    VERIFY_NULL(node);
     if(checkIfExists && node->subscriptions)
     {
         rtListItem item;
@@ -767,6 +780,7 @@ void removeElementSubscription(elementNode* node, rbusSubscription_t* sub)
     rtListItem item;
     rbusSubscription_t* data;
 
+    VERIFY_NULL(node);
     if(node->subscriptions)
     {
         rtList_GetFront(node->subscriptions, &item);
@@ -786,6 +800,8 @@ void removeElementSubscription(elementNode* node, rbusSubscription_t* sub)
 
 bool elementHasAutoPubSubscriptions(elementNode* node, rbusSubscription_t* excluding)
 {
+    if(!node)
+        return false;
     if(node->subscriptions)
     {
         rtListItem item;
@@ -796,7 +812,8 @@ bool elementHasAutoPubSubscriptions(elementNode* node, rbusSubscription_t* exclu
         while(item)
         {
             rtListItem_GetData(item, (void**)&sub);
-
+            if(!sub)
+                return false;
             if(sub->autoPublish)
             {
                 if(excluding != sub)
@@ -843,7 +860,6 @@ static elementNode* duplicateNode(elementNode* sourceNode, elementNode* parentNo
     elementNode* node;
     elementNode* child;
     char fullName[RBUS_MAX_NAME_LENGTH];
-
     node = getEmptyElementNode();
 
     snprintf(fullName, RBUS_MAX_NAME_LENGTH, "%s.%s", parentNode->fullName, name);
@@ -911,6 +927,8 @@ elementNode* instantiateTableRow(elementNode* tableNode, uint32_t instNum, char 
 {
     elementNode* rowTemplate;
     char name[32];
+    if(!tableNode)
+        return NULL;
 
 #if DEBUG_ELEMENTS
     RBUSLOG_INFO("%s: table=%s instNum=%u alias=%s", __FUNCTION__, tableNode->fullName, instNum, alias);
@@ -971,6 +989,7 @@ elementNode* instantiateTableRow(elementNode* tableNode, uint32_t instNum, char 
 
 void deleteTableRow(elementNode* rowNode)
 {
+    VERIFY_NULL(rowNode);
     elementNode* parent = rowNode->parent;
     
     if(!parent)
@@ -1008,9 +1027,11 @@ void replicateAcrossTableRowInstancesInternal(elementNode* rowNode, elementNode*
 {
     elementNode* currentNode;
     int i;
+
 #if DEBUG_ELEMENTS
     printf("replicateAcrossTableRowInstancesInternal %s\n", rowNode->fullName);
     for(i = 0; i < numChain; ++i)
+	VERIFY_NULL(chain[i]);
         printf( "Chain %d: %s\n", i, chain[i]->name );
 #endif
     i = 0;    
@@ -1018,6 +1039,7 @@ void replicateAcrossTableRowInstancesInternal(elementNode* rowNode, elementNode*
 
     while(currentNode && i < numChain)
     {
+		VERIFY_NULL(chain[i]);
         /*if node is table then recurse into all row instances*/
         if(currentNode && currentNode->type == RBUS_ELEMENT_TYPE_TABLE)
         {
@@ -1099,6 +1121,7 @@ void replicateAcrossTableRowInstances(elementNode* newNode)
 
 void setPropertyChangeComponent(elementNode* node, char const* componentName)
 {
+    VERIFY_NULL(node);
     if(node->changeComp)
         free(node->changeComp);
     if(componentName)

@@ -28,6 +28,7 @@
 #include <rbus.h>
 #include <rtList.h>
 #include <rtTime.h>
+#include <rtMemory.h>
 #include <linenoise.h>
 #include <stdarg.h>
 #include <rbus_core.h>
@@ -94,8 +95,8 @@ void show_menu(const char* command)
             printf ("\t%-20sThe name of a parameter\n\r", "parameter");
             printf ("\t%-20sData type of the parameter. Supported data types: string, int, uint, boolean, datetime, \n\r", "type");
             printf ("\t%-20ssingle, double, bytes, char, byte, int8, uint8, int16, uint16, int32, uint32, int64, uint64\n\r", " ");
-            printf ("\t%-20sOptional commit flag that if set to \"true\" will commit all parameters as a session\n\r", "commit");
             printf ("\t%-20sThe new value.\n\r", "value");
+            printf ("\t%-20sOptional commit flag that if set to true will commit all parameters as a session (default true)\n\r", "commit");
             printf ("Examples:\n\r");
             printf ("\tset Example.Prop1 string \"Hello World\"\n\r");
             printf ("\tset Example.Prop2 int 10\n\r");
@@ -110,8 +111,8 @@ void show_menu(const char* command)
             printf ("\t%-20sThe name of the table\n\r", "table");
             printf ("\t%-20sOptional alias name for new row\n\r", "alias");
             printf ("Examples:\n\r");
-            printf ("\tget Example.SomeTable.\n\r");
-            printf ("\tget Example.SomeTable. MyAlias\n\r");
+            printf ("\tadd Example.SomeTable.\n\r");
+            printf ("\tadd Example.SomeTable. MyAlias\n\r");
             printf ("\n\r");
 
         }
@@ -122,9 +123,35 @@ void show_menu(const char* command)
             printf ("Args:\n\r");
             printf ("\t%-20sThe name of the row to remove\n\r", "row");
             printf ("Examples:\n\r");
-            printf ("\tget Example.SomeTable.1\n\r");
+            printf ("\tdel Example.SomeTable.1\n\r");
             printf ("\n\r");
         }
+        else if(matchCmd(command, 4, "getrows"))
+        {
+            printf ("\e[1mgetr\e[0mows \e[4mpath\e[0m\n\r");
+            printf ("Get the names of the rows in a table\n\r");
+            printf ("Args:\n\r");
+            printf ("\t%-20sThe name of a table\n\r", "path");
+            printf ("Returns:\n\r");
+            printf ("\tNames of all rows\n\r");
+            printf ("Examples:\n\r");
+            printf ("\tgetr Example.Table1.\n\r");
+            printf ("\n\r");
+        }        
+        else if(matchCmd(command, 4, "getnames"))
+        {
+            printf ("\e[1mgetn\e[0mames \e[4mpath\e[0m  [nextLevel]\n\r");
+            printf ("Gets the names of the elements inside an object or table.\n\r");
+            printf ("Args:\n\r");
+            printf ("\t%-20sThe name of a table or object\n\r", "path");
+            printf ("\t%-20sOptional flag to get only the next level if true or get all names if false (default true)\n\r", "nextLevel");
+            printf ("Returns:\n\r");
+            printf ("\tNames of all children\n\r");
+            printf ("Examples:\n\r");
+            printf ("\tgetn Example.Object1.\n\r");
+            printf ("\tgetn Example.Table1.\n\r");
+            printf ("\n\r");
+        }        
         else if(matchCmd(command, 5, "discallcomponents"))
         {
             printf ("\e[1mdisca\e[0mllcomponents\n\r");
@@ -359,6 +386,8 @@ void show_menu(const char* command)
         printf ("\t\e[1mset\e[0mvalues \e[4mparameter\e[0m \e[4mtype\e[0m \e[4mvalue\e[0m [[\e[4mparameter\e[0m \e[4mtype\e[0m \e[4mvalue\e[0m] \e[4m...\e[0m] [commit]\n\r");
         printf ("\t\e[1madd\e[0mrow \e[4mtable\e[0m [alias]\n\r");
         printf ("\t\e[1mdel\e[0mrow \e[4mrow\e[0m\n\r");
+        printf ("\t\e[1mgetr\e[0mows \e[4mpath\e[0m\n\r");
+        printf ("\t\e[1mgetn\e[0mames \e[4mpath\e[0m [nextLevel]\n\r");
         printf ("\t\e[1mdiscc\e[0momponents \e[4melement\e[0m [\e[4melement\e[0m \e[4m...\e[0m]\n\r");
         printf ("\t\e[1mdisca\e[0mllcomponents\n\r");
         printf ("\t\e[1mmethod_no\e[0margs \e[4mmethodname\e[0m\n\r");
@@ -864,7 +893,7 @@ void execute_discover_wildcard_dests_cmd(int argc, char* argv[])
 
     (void)argc;
     (void)argv;
-printf("argc=%d", argc);
+
     if (argc < 3)
     {
         printf ("Invalid arguments. Please see the help\n\r");
@@ -1095,7 +1124,7 @@ void validate_and_execute_set_cmd (int argc, char *argv[])
             }
             else
             {
-                rbusProperty_PushBack(properties, next);
+                rbusProperty_Append(properties, next);
                 rbusProperty_Release(next);
             }
         }
@@ -1255,6 +1284,201 @@ void validate_and_execute_set_cmd (int argc, char *argv[])
     }
 }
 
+void validate_and_execute_getnames_cmd (int argc, char *argv[])
+{
+    bool nextLevel = true;
+    rbusElementInfo_t* elems = NULL;
+    rbusError_t rc;
+    int index = 1;
+
+    if (argc < 3)
+    {
+        printf ("Invalid arguments. Please see the help\n\r");
+        return;
+    }
+
+    if (!verify_rbus_open())
+        return;
+
+    runSteps = __LINE__;
+
+    if(argc > 3)
+    {
+        if(strcmp(argv[3], "true") == 0)
+            nextLevel = true;
+        else if(strcmp(argv[3], "false") == 0)
+            nextLevel = false;
+        else
+        {
+            printf ("Invalid nextLevel option.  This should be 'true' or 'false'.\n\r");
+            return;
+        }
+    }
+
+    rc = rbusElementInfo_get(g_busHandle, argv[2], nextLevel ? -1 : RBUS_MAX_NAME_DEPTH, &elems);
+
+    if(RBUS_ERROR_SUCCESS == rc)
+    {
+        if(elems)
+        {
+#ifdef PRINT_BASH_STYLE
+            rbusElementInfo_t* elem;
+            char const* component;
+            size_t maxIndexLen = 0;
+            size_t maxComponentLen = 0;
+            size_t maxNameLen = 0;
+            size_t len;
+            char buff[20];
+
+            elem = elems;
+            component = NULL;
+            index = 1;
+
+            while(elem)
+            {
+                if(component == NULL || strcmp(component, elem->component) != 0)
+                {
+                    len = strlen(elem->component);
+                    if(len > maxComponentLen)
+                        maxComponentLen = len;
+                    component = elem->component;
+                }
+
+                len = strlen(elem->name);
+                if(len > maxNameLen)
+                    maxNameLen = len;
+
+                snprintf(buff, 20, "%d", index++);
+                len = strlen(buff);
+                if(len > maxIndexLen)
+                    maxIndexLen = len;
+
+                elem = elem->next;
+            }
+
+            len = printf("%*s  %-8s  %6s  %-*s  %-*s\n\r", (int)maxIndexLen, " ", "type", "access", (int)maxComponentLen, "component", (int)maxNameLen, "name");
+            for(index = 0; index < (int)len; ++index)
+                printf("%c", '-');
+            printf("\n\r");
+
+            elem = elems;
+            component = NULL;
+            index = 1;
+
+
+            while(elem)
+            {
+                printf("%*d  %-8s  %d%d%d%d%d%d  %-*s  %s\n\r",
+                    (int)maxIndexLen,
+                    index++,
+                    elem->type == RBUS_ELEMENT_TYPE_PROPERTY ? "property" :
+                    (elem->type == RBUS_ELEMENT_TYPE_TABLE ? "table" :
+                    (elem->type == RBUS_ELEMENT_TYPE_EVENT ? "event" :
+                    (elem->type == RBUS_ELEMENT_TYPE_METHOD ? "method" : "object"))),
+                    elem->access & RBUS_ACCESS_GET ? 1 : 0,
+                    elem->access & RBUS_ACCESS_SET ? 1 : 0,
+                    elem->access & RBUS_ACCESS_ADDROW ? 1 : 0,
+                    elem->access & RBUS_ACCESS_REMOVEROW ? 1 : 0,
+                    elem->access & RBUS_ACCESS_SUBSCRIBE ? 1 : 0,
+                    elem->access & RBUS_ACCESS_INVOKE ? 1 : 0,
+                    (int)maxComponentLen,
+                    elem->component,
+                    elem->name);
+                elem = elem->next;
+            }
+#else
+
+            rbusElementInfo_t* elem;
+            char const* component;
+
+            elem = elems;
+            component = NULL;
+            index = 1;
+
+            while(elem)
+            {
+                if(component == NULL || strcmp(component, elem->component) != 0)
+                {
+                    printf("\n\rComponent %s:\n\r", elem->component);
+                    component = elem->component;
+                    index = 1;
+                }
+                printf ("Element   %2d:\n\r", index++);
+                printf ("              Name  : %s\n\r", elem->name);
+                printf ("              Type  : %s\n\r",
+                    elem->type == RBUS_ELEMENT_TYPE_PROPERTY ? "Property" :
+                    (elem->type == RBUS_ELEMENT_TYPE_TABLE ?   "Table" :
+                    (elem->type == RBUS_ELEMENT_TYPE_EVENT ?   "Event" :
+                    (elem->type == RBUS_ELEMENT_TYPE_METHOD ?  "Method" :
+                                                               "Object"))));
+                printf ("              Writable: ");
+                if(elem->type == RBUS_ELEMENT_TYPE_TABLE && elem->access & RBUS_ACCESS_ADDROW)
+                    printf( "Writable");
+                else if(elem->access & RBUS_ACCESS_SET)
+                    printf( "Writable");
+                else if(elem->access & RBUS_ACCESS_GET)
+                    printf( "ReadOnly");
+                printf( "\n\r");
+
+                printf ("              Access Flags: %d%d%d%d%d%d\n\r",
+                    elem->access & RBUS_ACCESS_GET ? 1 : 0,
+                    elem->access & RBUS_ACCESS_SET ? 1 : 0,
+                    elem->access & RBUS_ACCESS_ADDROW ? 1 : 0,
+                    elem->access & RBUS_ACCESS_REMOVEROW ? 1 : 0,
+                    elem->access & RBUS_ACCESS_SUBSCRIBE ? 1 : 0,
+                    elem->access & RBUS_ACCESS_INVOKE ? 1 : 0);
+
+                elem = elem->next;
+            }
+
+#endif
+
+            rbusElementInfo_free(g_busHandle, elems);
+        }
+        else
+        {
+            printf ("No results returned for %s\n\r",argv[2]);
+        }
+    }
+    else
+    {
+        printf ("Failed to get the data. Error : %d\n\r",rc);
+    }
+}
+
+void validate_and_execute_getrownames_cmd (int argc, char *argv[])
+{
+    rbusError_t rc = RBUS_ERROR_SUCCESS;
+    rbusRowName_t* rows;
+    int i = 1;
+
+    if (argc < 3)
+    {
+        printf ("Invalid arguments. Please see the help\n\r");
+        return;
+    }
+
+    if (!verify_rbus_open())
+        return;
+
+    runSteps = __LINE__;
+
+    rc = rbusTable_getRowNames(g_busHandle, argv[2], &rows);
+    if(RBUS_ERROR_SUCCESS == rc)
+    {
+        rbusRowName_t* row = rows;
+        while(row)
+        {
+            printf("Row %2u: instNum=%u, alias=%s, name=%s\n\r", i++, row->instNum, row->alias ? row->alias : "None", row->name);
+            row = row->next;
+        }
+        rbusTable_freeRowNames(g_busHandle, rows);
+    }
+    else
+    {
+        printf ("Failed to get the data. Error : %d\n\r",rc);
+    }
+}
 
 void validate_and_execute_register_command (int argc, char *argv[], bool add)
 {
@@ -1430,7 +1654,7 @@ void validate_and_execute_subscribe_cmd (int argc, char *argv[], bool add)
 
     if(add)
     {
-        userData = calloc(1, 256);//fixme - never gets freed
+        userData = rt_calloc(1, 256);//fixme - never gets freed
         strcat(userData, "sub ");
         strcat(userData, argv[2]);
     }
@@ -1546,7 +1770,7 @@ void validate_and_execute_listen_command(int argc, char *argv[], bool add)
     runSteps = __LINE__;
     if(add)
     {
-        char* userData = calloc(1, 256);//fixme - never gets freed
+        char* userData = rt_calloc(1, 256);//fixme - never gets freed
         sprintf(userData, "listen %s", argv[2]);
         rc = rbusMessage_AddListener(g_busHandle, argv[2], message_receive_handler, userData);
     }
@@ -1738,6 +1962,14 @@ int handle_cmds (int argc, char *argv[])
     {
         validate_and_execute_set_cmd (argc, argv);
     }
+    else if(matchCmd(command, 4, "getnames"))
+    {
+        validate_and_execute_getnames_cmd (argc, argv);
+    } 
+    else if(matchCmd(command, 4, "getrows") || matchCmd(command, 4, "getrownames"))
+    {
+        validate_and_execute_getrownames_cmd (argc, argv);
+    }       
     else if(matchCmd(command, 5, "disccomponents"))
     {
         int i = argc - 2;
@@ -1971,25 +2203,26 @@ void completion(const char *buf, linenoiseCompletions *lc) {
     char* cpy = strdup(buf);
     char* line = NULL;
     char* tok = NULL;
+    char* saveptr = NULL;
     int num = 0;
     char* tokens[3];/*3 or the number of tokens we scan for below*/
     char* completion = NULL;
 
     len = strlen(buf);
-    line = malloc(len + 32);/*32 or just enough room to append a word from below*/
+    line = rt_malloc(len + 32);/*32 or just enough room to append a word from below*/
     strcpy(line, buf);
   
-    tok = strtok(cpy, " ");
+    tok = strtok_r(cpy, " ", &saveptr);
     while(tok && num < 3)
     {
         tokens[num++] = tok;
-        tok = strtok(NULL, " ");
+        tok = strtok_r(NULL, " ", &saveptr);
     }
 
     if(num == 1)
     {
         runSteps = __LINE__;
-        completion = find_completion(tokens[0], 14, "get", "set", "add", "del", "disca", "discc", "disce",
+        completion = find_completion(tokens[0], 14, "get", "set", "add", "del", "getr", "getn", "disca", "discc", "disce",
                 "discw", "sub", "unsub", "method_no", "method_na", "method_va", "reg", "unreg", "pub",
                 "addl", "reml", "send", "log", "quit", "help");
     }
@@ -2046,19 +2279,20 @@ char *hints(const char *buf, int *color, int *bold) {
     char* cpy = strdup(buf);
     char* line = NULL;
     char* tok = NULL;
+    char* saveptr = NULL;
     int num = 0;
     char* tokens[4];/*3 or the number of tokens we scan for below*/
     char* hint = NULL;
 
     len = strlen(buf);
-    line = malloc(len + 32);/*32 or just enough room to append a word from below*/
+    line = rt_malloc(len + 32);/*32 or just enough room to append a word from below*/
     strcpy(line, buf);
   
-    tok = strtok(cpy, " ");
+    tok = strtok_r(cpy, " ", &saveptr);
     while(tok && num < 4)
     {
         tokens[num++] = tok;
-        tok = strtok(NULL, " ");
+        tok = strtok_r(NULL, " ", &saveptr);
     }
 
     if(num == 1)
@@ -2079,6 +2313,14 @@ char *hints(const char *buf, int *color, int *bold) {
         else if(strcmp(tokens[0], "del") == 0)
         {
             hint = " row";
+        }
+        else if(strcmp(tokens[0], "getr") == 0)
+        {
+            hint = " path";
+        }
+        else if(strcmp(tokens[0], "getn") == 0)
+        {
+            hint = " path";
         }
         else if(strcmp(tokens[0], "discc") == 0)
         {
@@ -2151,6 +2393,10 @@ char *hints(const char *buf, int *color, int *bold) {
         if(strcmp(tokens[0], "set") == 0)
         {
             hint = " type(string,int,uint,boolean,...) value";
+        }
+        else if(strcmp(tokens[0], "getn") == 0)
+        {
+            hint = " nextLevel(true|false)";
         }
         else if(strcmp(tokens[0], "reg") == 0)
         {

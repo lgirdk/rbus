@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <rbus.h>
+#include <rtMemory.h>
 #include "mta_hal_tr104.h"
 
 rbusError_t mta_tr104_rbusGetHandler(rbusHandle_t handle, rbusProperty_t inProperty, rbusGetHandlerOptions_t* opt)
@@ -26,12 +27,13 @@ rbusError_t mta_tr104_rbusGetHandler(rbusHandle_t handle, rbusProperty_t inPrope
     {
         /* Tokenize the returns value list and set the tlv and pass it to inProperty */
         char *pTmp = NULL;
+        char* saveptr = NULL;
         char *pStr = strdup (pParamValueList[0]);
-        pTmp = strtok(pStr, ",");
+        pTmp = strtok_r(pStr, ",", &saveptr);
         if (pTmp)
         {
-            char* pType = strtok(NULL, ",");
-            char* pValue = strtok(NULL, ",");
+            char* pType = strtok_r(NULL, ",", &saveptr);
+            char* pValue = strtok_r(NULL, ",", &saveptr);
             if ((pType == NULL) || (pValue == NULL))
             {
                 printf ("ccspMtaAgentTR104Hal: The pre-defined formatted string is not present\n");
@@ -100,7 +102,7 @@ rbusError_t mta_tr104_rbusSetHandler(rbusHandle_t handle, rbusProperty_t inPrope
     char *aParamDetail = NULL;
 
     /* Arrive at length and do malloc; for now 512; */
-    aParamDetail = calloc (1, 512);
+    aParamDetail = rt_calloc (1, 512);
 
     char* pStrValue = rbusValue_ToString(value, NULL, 0);
     /* Make a single string */

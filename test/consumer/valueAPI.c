@@ -15,6 +15,7 @@
 #include "../../src/rbus_buffer.h"
 #include <math.h>
 #include "../common/test_macros.h"
+#include <rtMemory.h>
 
 int getDurationValueAPI()
 {
@@ -396,7 +397,7 @@ void testValue_Floats()
 
 void testValue_Time()
 {
-    rbusDateTime_t tv1;
+    rbusDateTime_t tv1 = {{0},{0}};
     rbusDateTime_t const* tv2;
     time_t nowtime = 0;
 
@@ -464,7 +465,7 @@ void testValue_String()
             //printf("testing huge string of size %d\n", i);
         }
 
-        data = malloc(i+1);
+        data = rt_malloc(i+1);
 
         for(j=0; j<i; ++j)
         {
@@ -511,7 +512,7 @@ void testValue_Bytes()
         int j;
         int len = byteLength[i];
         int len2;
-        uint8_t* bytes = malloc(len);
+        uint8_t* bytes = rt_malloc(len);
         uint8_t const* bytes2;
         rbusValue_t bval;
 
@@ -573,7 +574,7 @@ void testValue_Compare()
     int i;
     time_t tnow;
     struct tm* tlocal;
-    rbusDateTime_t rbus_time;
+    rbusDateTime_t rbus_time = {{0},{0}};
 
     printf("%s\n",__FUNCTION__);
 
@@ -1276,6 +1277,70 @@ void testValue_Print()
     }
 }
 
+void testValue_InitType()
+{
+    rbusDateTime_t tv1 = {{0},{0}};
+    time_t nowtime = 0;
+    const char teststring[] = "Hello World";
+    rbusProperty_t prop;
+    rbusObject_t obj;
+
+    printf("%s\n",__FUNCTION__);
+
+    memcpy(&(tv1.m_time), localtime(&nowtime),sizeof(struct tm));
+    rbusProperty_Init(&prop, "MyProp", NULL);
+    rbusObject_Init(&obj, "MyObj");
+
+    rbusValue_t vbtrue = rbusValue_InitBoolean(true);
+    rbusValue_t vbfalse = rbusValue_InitBoolean(false);
+    rbusValue_t vi16_n1234 = rbusValue_InitInt16(-1234);
+    rbusValue_t vu16_4321 = rbusValue_InitUInt16(4321);
+    rbusValue_t vi32_689013 = rbusValue_InitInt32(689013);
+    rbusValue_t vu32_856712 = rbusValue_InitUInt32(856712);
+    rbusValue_t vi64_987654321213 = rbusValue_InitInt64(987654321213);
+    rbusValue_t vu64_987654321213 = rbusValue_InitUInt64(987654321213);
+    rbusValue_t vf32_354dot678 = rbusValue_InitSingle(354.678f);
+    rbusValue_t vf64_789dot4738291023 = rbusValue_InitDouble(789.4738291023);
+    rbusValue_t vtv = rbusValue_InitTime(&tv1);
+    rbusValue_t vs = rbusValue_InitString(teststring);
+    rbusValue_t vbytes = rbusValue_InitBytes((uint8_t const*)teststring, strlen(teststring)+1);
+    rbusValue_t vprop = rbusValue_InitProperty(prop);
+    rbusValue_t vobj = rbusValue_InitObject(obj);    
+
+    TEST(rbusValue_GetBoolean(vbtrue) == true);
+    TEST(rbusValue_GetBoolean(vbfalse) == false);
+    TEST(rbusValue_GetInt16(vi16_n1234) == -1234);
+    TEST(rbusValue_GetUInt16(vu16_4321) == 4321);
+    TEST(rbusValue_GetInt32(vi32_689013) == 689013);
+    TEST(rbusValue_GetUInt32(vu32_856712) == 856712);
+    TEST(rbusValue_GetInt64(vi64_987654321213) == 987654321213);
+    TEST(rbusValue_GetUInt64(vu64_987654321213) == 987654321213);
+    TEST(rbusValue_GetSingle(vf32_354dot678) == 354.678f);
+    TEST(rbusValue_GetDouble(vf64_789dot4738291023) == 789.4738291023);
+    TEST(memcmp(rbusValue_GetTime(vtv), &tv1, sizeof(rbusDateTime_t)) == 0);
+    TEST(rbusValue_GetString(vs, NULL) && !strcmp(rbusValue_GetString(vs, NULL), "Hello World"));
+    TEST(rbusValue_GetBytes(vbytes, NULL) && !strcmp((char const*)rbusValue_GetBytes(vbytes, NULL), "Hello World"));
+    TEST(rbusValue_GetProperty(vprop) != NULL && rbusProperty_GetName(rbusValue_GetProperty(vprop)) && !strcmp(rbusProperty_GetName(rbusValue_GetProperty(vprop)), "MyProp"));
+    TEST(rbusValue_GetObject(vobj) != NULL && rbusObject_GetName(rbusValue_GetObject(vobj)) && !strcmp(rbusObject_GetName(rbusValue_GetObject(vobj)), "MyObj"));
+
+    rbusValue_Release(vbtrue);
+    rbusValue_Release(vbfalse);
+    rbusValue_Release(vi16_n1234);
+    rbusValue_Release(vu16_4321);
+    rbusValue_Release(vi32_689013);
+    rbusValue_Release(vu32_856712);
+    rbusValue_Release(vi64_987654321213);
+    rbusValue_Release(vu64_987654321213);
+    rbusValue_Release(vf32_354dot678);
+    rbusValue_Release(vf64_789dot4738291023);
+    rbusValue_Release(vtv);
+    rbusValue_Release(vs);
+    rbusValue_Release(vbytes);
+    rbusValue_Release(vprop);
+    rbusValue_Release(vobj);
+    rbusObject_Release(obj);
+    rbusProperty_Release(prop);
+}
 
 void testValueAPI(rbusHandle_t handle, int* countPass, int* countFail)
 {
@@ -1296,6 +1361,7 @@ void testValueAPI(rbusHandle_t handle, int* countPass, int* countFail)
     testValue_ToDebugString();
     testValue_TLV();
     testValue_Print();
+    testValue_InitType();
 
     *countPass = gCountPass;
     *countFail = gCountFail;

@@ -18,7 +18,10 @@
 */
 #include "rbus.h"
 #include "rbus_handle.h"
+#include <rtMemory.h>
 #include <string.h>
+
+#define VERIFY_NULL(T) if(NULL == T){ return RBUS_ERROR_INVALID_INPUT; }
 
 typedef struct
 {
@@ -47,7 +50,8 @@ rbusError_t rtError_to_rBusError(rtError e)
 static void rtMessage_CallbackHandler(rtMessageHeader const* hdr, uint8_t const* buff, uint32_t n, void* userData)
 {
     rbusMessageHandlerContext_t* ctx = (rbusMessageHandlerContext_t*)userData;
-
+    if((!ctx)||(!hdr))
+        return;
     // if this is request, the sender wants confirmation of receipt
     // do that before dispatching application callback
     if (rtMessageHeader_IsRequest(hdr))
@@ -76,13 +80,17 @@ static void rtMessage_CallbackHandler(rtMessageHeader const* hdr, uint8_t const*
 static void cleanupContext(void * p)
 {
     rbusMessageHandlerContext_t* ctx = (rbusMessageHandlerContext_t*)p;
-    if(ctx->expression)
-        free(ctx->expression);
-    free(ctx);
+    if(ctx){
+        if(ctx->expression)
+            free(ctx->expression);
+        free(ctx);
+    }
 }
 
 static int compareContextExpression(const void *left, const void *right)
 {
+    if((!left)||(!right))
+        return -1;
     return strcmp(((const rbusMessageHandlerContext_t*)left)->expression, (const char*)right);
 }
 
@@ -92,9 +100,11 @@ rbusError_t rbusMessage_AddListener(
     rbusMessageHandler_t handler,
     void* userData)
 {
+    VERIFY_NULL(handle);
+    VERIFY_NULL(expression);
     rtConnection con = ((struct _rbusHandle*)handle)->connection;
 
-    rbusMessageHandlerContext_t* ctx = malloc(sizeof(rbusMessageHandlerContext_t));
+    rbusMessageHandlerContext_t* ctx = rt_malloc(sizeof(rbusMessageHandlerContext_t));
     ctx->handle = handle;
     ctx->expression = strdup(expression);
     ctx->handler = handler;
@@ -116,6 +126,7 @@ rbusError_t rbusMessage_RemoveListener(
     rbusHandle_t handle,
     char const* expression)
 {
+    VERIFY_NULL(handle);
     rtConnection con = ((struct _rbusHandle*)handle)->connection;
 
     rtVector_RemoveItemByCompare(handle->messageCallbacks, expression, compareContextExpression, cleanupContext);
@@ -133,12 +144,14 @@ rbusError_t rbusMessage_RemoveListener(
 rbusError_t rbusMessage_RemoveAllListeners(
     rbusHandle_t handle)
 {
+    VERIFY_NULL(handle);
     rtConnection con = ((struct _rbusHandle*)handle)->connection;
     int i, n;
 
     for (i = 0, n = rtVector_Size(handle->messageCallbacks); i < n; ++i)
     {
         rbusMessageHandlerContext_t* ctx = rtVector_At(handle->messageCallbacks, i);
+        VERIFY_NULL(ctx);
         rtError e = rtConnection_RemoveListener(con, ctx->expression);
         if (e != RT_OK)
         {
@@ -155,8 +168,10 @@ rbusError_t rbusMessage_Send(
     rbusMessage_t* message,
     rbusMessageSendOptions_t opts)
 {
+    VERIFY_NULL(handle);
     rtConnection con = ((struct _rbusHandle*)handle)->connection;
 
+    VERIFY_NULL(message);
     if (opts & RBUS_MESSAGE_CONFIRM_RECEIPT)
     {
         uint8_t * res = NULL;

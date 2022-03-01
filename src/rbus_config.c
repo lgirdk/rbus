@@ -1,5 +1,6 @@
 #include "rbus_config.h"
 #include "rbus_log.h"
+#include <rtMemory.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,7 +40,7 @@ void rbusConfig_CreateOnce()
 
     RBUSLOG_DEBUG("%s", __FUNCTION__);
 
-    gConfig = malloc(sizeof(struct _rbusConfig_t));
+    gConfig = rt_malloc(sizeof(struct _rbusConfig_t));
 
     initStr(gConfig->tmpDir,                RBUS_TMP_DIRECTORY);
     initInt(gConfig->subscribeTimeout,      RBUS_SUBSCRIBE_TIMEOUT);

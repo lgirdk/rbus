@@ -533,7 +533,7 @@ TEST(rbusTabRegRowNegTest, test1)
     rbusHandle_t handle=NULL;
     int rc = RBUS_ERROR_SUCCESS;
 
-    rc = rbusTable_registerRow(handle, "Device.rbusProvider.PartialPath", "test", 1);
+    rc = rbusTable_registerRow(handle, "Device.rbusProvider.PartialPath", 1, "test");
     EXPECT_EQ(rc,RBUS_ERROR_INVALID_INPUT);
 }
 
@@ -543,7 +543,7 @@ TEST(rbusTabRegRowNegTest, test2)
     int rc = RBUS_ERROR_SUCCESS;
 
     handle = (struct _rbusHandle *) malloc(sizeof(struct _rbusHandle));
-    rc = rbusTable_registerRow(handle, NULL, NULL, 1);
+    rc = rbusTable_registerRow(handle, NULL, 1, NULL);
     EXPECT_EQ(rc,RBUS_ERROR_INVALID_INPUT);
     free(handle);
 }

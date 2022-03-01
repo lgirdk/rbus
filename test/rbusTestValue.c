@@ -472,7 +472,7 @@ void testValue_String()
             //printf("testing huge string of size %d\n", i);
         }
 
-        data = malloc(i+1);
+        data = rt_malloc(i+1);
 
         for(j=0; j<i; ++j)
         {
@@ -519,7 +519,7 @@ void testValue_Bytes()
         int j;
         int len = byteLength[i];
         int len2;
-        uint8_t* bytes = malloc(len);
+        uint8_t* bytes = rt_malloc(len);
         uint8_t const* bytes2;
         rbusValue_t bval;
 
@@ -1271,7 +1271,7 @@ void testPropertyList()
         rbusValue_Release(val3);
 
         rbusProperty_SetNext(prop1, prop2);
-        rbusProperty_PushBack(prop1, prop3);
+        rbusProperty_Append(prop1, prop3);
 
         TEST(rbusProperty_GetNext(prop1) != NULL);
         TEST(rbusProperty_GetNext(rbusProperty_GetNext(prop1)) != NULL);
@@ -1331,7 +1331,7 @@ void testPropertyList()
                 }
                 else/*or using PushBack helper*/
                 {
-                    rbusProperty_PushBack(first, next);
+                    rbusProperty_Append(first, next);
                 }
                 rbusProperty_Release(next);
                 last = next;
@@ -1561,8 +1561,8 @@ void testObjectProperty()
     rbusProperty_Init(&replace2, "prop2", NULL);
     rbusProperty_Init(&replace3, "prop3", NULL);
 
-    rbusProperty_PushBack(prop1, prop2);
-    rbusProperty_PushBack(prop1, prop3);
+    rbusProperty_Append(prop1, prop2);
+    rbusProperty_Append(prop1, prop3);
 
     rbusObject_Init(&obj, NULL);
 

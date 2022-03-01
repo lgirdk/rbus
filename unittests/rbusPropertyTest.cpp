@@ -154,13 +154,13 @@ TEST(rbusPropertyTest, testPushBack)
   rbusValue_Init(&value);
   rbusValue_SetString(value, "test2");
   rbusProperty_Init (&prop2, "Device.rbusPropertyTest2", value);
-  rbusProperty_PushBack(prop1, prop2);
+  rbusProperty_Append(prop1, prop2);
   rbusValue_Release(value);
 
   rbusValue_Init(&value);
   rbusValue_SetString(value, "test3");
   rbusProperty_Init (&prop3, "Device.rbusPropertyTest3", value);
-  rbusProperty_PushBack(prop2, prop3);
+  rbusProperty_Append(prop2, prop3);
   rbusValue_Release(value);
 
   while(prop1) {
@@ -168,11 +168,11 @@ TEST(rbusPropertyTest, testPushBack)
       rbus_val = rbusProperty_GetName(prop1);
       name = rbusValue_GetString(value, &len);
       if(strcmp(rbus_val,"Device.rbusPropertyTest1") == 0) {
-	  EXPECT_STREQ("test1", name) << "rbusProperty_PushBack failed testPushBack";
+	  EXPECT_STREQ("test1", name) << "rbusProperty_Append failed testPushBack";
       } else if(strcmp(rbus_val,"Device.rbusPropertyTest2") == 0) {
-	  EXPECT_STREQ("test2", name) << "rbusProperty_PushBack failed testPushBack";
+	  EXPECT_STREQ("test2", name) << "rbusProperty_Append failed testPushBack";
       } else if(strcmp(rbus_val,"Device.rbusPropertyTest3") == 0) {
-	  EXPECT_STREQ("test3", name) << "rbusProperty_PushBack failed testPushBack";
+	  EXPECT_STREQ("test3", name) << "rbusProperty_Append failed testPushBack";
       }
       prop1 = rbusProperty_GetNext(prop1);
   }
@@ -200,13 +200,13 @@ TEST(rbusPropertyTest, testCount)
   rbusValue_Init(&value);
   rbusValue_SetString(value, "test2");
   rbusProperty_Init (&prop2, "Device.rbusPropertyTest2", value);
-  rbusProperty_PushBack(prop1, prop2);
+  rbusProperty_Append(prop1, prop2);
   rbusValue_Release(value);
 
   rbusValue_Init(&value);
   rbusValue_SetString(value, "test3");
   rbusProperty_Init (&prop3, "Device.rbusPropertyTest3", value);
-  rbusProperty_PushBack(prop2, prop3);
+  rbusProperty_Append(prop2, prop3);
   rbusValue_Release(value);
 
   EXPECT_EQ(rbusProperty_Count(prop1),3);
