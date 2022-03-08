@@ -57,6 +57,7 @@ rbusHandle_t   g_busHandle = 0;
 rtList g_registeredProps = NULL;
 bool g_isInteractive = false;
 bool g_logEvents = true;
+rbusLogLevel_t g_logLevel = RBUS_LOG_WARN;
 
 bool matchCmd(const char* sub, size_t lenmin,  const char* full)
 {
@@ -401,6 +402,10 @@ void rbus_log_handler(
     rtTime_Now(&tm);
     const char* slevel = "";
     runSteps = __LINE__;
+
+    if(level < g_logLevel)
+        return;
+
     switch(level)
     {
     case RBUS_LOG_DEBUG:    slevel = "DEBUG";   break;
@@ -1869,6 +1874,7 @@ int handle_cmds (int argc, char *argv[])
             if(valid)
             {
                 rbus_setLogLevel(level);
+                g_logLevel = level;
 
                 printf("Log level set to %s\n\r", argv[2]);
             }

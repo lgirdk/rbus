@@ -214,9 +214,7 @@ elementNode* insertElement(elementNode* root, rbusDataElement_t* elem)
     nextNode = currentNode->child;
     createChild = 1;
 
-#if DEBUG_ELEMENTS
-    RBUSLOG_INFO("<%s>: Request to insert element [%s]!!", __FUNCTION__, elem->name);
-#endif
+    RBUSLOG_DEBUG("<%s>: Request to insert element [%s]!!", __FUNCTION__, elem->name);
 
     name = strdup(elem->name);
 
@@ -253,9 +251,7 @@ elementNode* insertElement(elementNode* root, rbusDataElement_t* elem)
         {
             if(createChild)
             {
-#if DEBUG_ELEMENTS
-                RBUSLOG_INFO("Create child [%s]", token);
-#endif
+                RBUSLOG_DEBUG("Create child [%s]", token);
                 currentNode->child = getEmptyElementNode();
                 currentNode->child->parent = currentNode;
                 if(currentNode == root)    
@@ -275,9 +271,7 @@ elementNode* insertElement(elementNode* root, rbusDataElement_t* elem)
         }
         while(nextNode != NULL)
         {
-#if DEBUG_ELEMENTS
-            RBUSLOG_INFO("child name=[%s], Token = [%s]", nextNode->name, token);
-#endif
+            RBUSLOG_DEBUG("child name=[%s], Token = [%s]", nextNode->name, token);
             if(strcmp(nextNode->name, token) == 0)
             {
                 currentNode = nextNode;
@@ -292,18 +286,14 @@ elementNode* insertElement(elementNode* root, rbusDataElement_t* elem)
                 createChild = 0;
                 if(nextNode == NULL)
                 {
-#if DEBUG_ELEMENTS
-                    RBUSLOG_INFO("Create Sibling [%s]", token);
-#endif
+                    RBUSLOG_DEBUG("Create Sibling [%s]", token);
                     currentNode->nextSibling = getEmptyElementNode();
                     currentNode->nextSibling->parent = currentNode->parent;
                     if(currentNode->parent->fullName)
                         snprintf(buff, RBUS_MAX_NAME_LENGTH, "%s.%s", currentNode->parent->fullName, token);
                     else
                         snprintf(buff, RBUS_MAX_NAME_LENGTH, "%s", token);
-#if DEBUG_ELEMENTS
-                    RBUSLOG_INFO("Full name [%s]", buff);
-#endif
+                    RBUSLOG_DEBUG("Full name [%s]", buff);
                     currentNode->nextSibling->fullName = strdup(buff);
                     currentNode = currentNode->nextSibling;
                     currentNode->name = strdup(token);
@@ -357,9 +347,7 @@ elementNode* retrieveElement(elementNode* root, const char* elmentName)
     elementNode* nextNode = NULL;
     int tokenFound = 0;
 
-#if DEBUG_ELEMENTS
-    RBUSLOG_INFO("<%s>: Request to retrieve element [%s]", __FUNCTION__, elmentName);
-#endif
+    RBUSLOG_DEBUG("<%s>: Request to retrieve element [%s]", __FUNCTION__, elmentName);
     if(currentNode == NULL)
     {
         return NULL;
@@ -373,18 +361,14 @@ elementNode* retrieveElement(elementNode* root, const char* elmentName)
     token = strtok_r(name, ".", &saveptr);
     while( token != NULL)
     {
-#if DEBUG_ELEMENTS
-        RBUSLOG_INFO("Token = [%s]", token);
-#endif
+        RBUSLOG_DEBUG("Token = [%s]", token);
         tokenFound = 0;
         if(nextNode == NULL)
         {
             break;
         }
 
-#if DEBUG_ELEMENTS
-        RBUSLOG_INFO("child name=[%s], Token = [%s]", nextNode->name, token);
-#endif
+        RBUSLOG_DEBUG("child name=[%s], Token = [%s]", nextNode->name, token);
         /*
         if(nextNode->type == RBUS_ELEMENT_TYPE_TABLE)
         {
@@ -396,9 +380,7 @@ elementNode* retrieveElement(elementNode* root, const char* elmentName)
         else*/
         if(strcmp(nextNode->name, token) == 0)
         {
-#if DEBUG_ELEMENTS
-            RBUSLOG_INFO("tokenFound!");
-#endif
+            RBUSLOG_DEBUG("tokenFound!");
             tokenFound = 1;
             currentNode = nextNode;
             nextNode = currentNode->child;
@@ -410,14 +392,10 @@ elementNode* retrieveElement(elementNode* root, const char* elmentName)
 
             while(nextNode != NULL)
             {
-#if DEBUG_ELEMENTS
-                RBUSLOG_INFO("child name=[%s], Token = [%s]", nextNode->name, token);
-#endif
+                RBUSLOG_DEBUG("child name=[%s], Token = [%s]", nextNode->name, token);
                 if(strcmp(nextNode->name, token) == 0)
                 {
-#if DEBUG_ELEMENTS
-                    RBUSLOG_INFO("tokenFound!");
-#endif
+                    RBUSLOG_DEBUG("tokenFound!");
                     tokenFound = 1;
                     currentNode = nextNode;
                     nextNode = currentNode->child;
@@ -444,9 +422,7 @@ elementNode* retrieveElement(elementNode* root, const char* elmentName)
 
     if(tokenFound)
     {
-#if DEBUG_ELEMENTS
-        RBUSLOG_INFO("Found Element with param name [%s]", currentNode->name);
-#endif
+        RBUSLOG_DEBUG("Found Element with param name [%s]", currentNode->name);
         return currentNode;
     }
     else
@@ -465,9 +441,7 @@ elementNode* retrieveInstanceElement(elementNode* root, const char* elmentName)
     int tokenFound = 0;
     bool isWildcard = false;
 
-#if DEBUG_ELEMENTS
-    RBUSLOG_INFO("<%s>: Request to retrieve element [%s]", __FUNCTION__, elmentName);
-#endif
+    RBUSLOG_DEBUG("<%s>: Request to retrieve element [%s]", __FUNCTION__, elmentName);
     if(currentNode == NULL)
     {
         return NULL;
@@ -481,9 +455,7 @@ elementNode* retrieveInstanceElement(elementNode* root, const char* elmentName)
     token = strtok_r(name, ".", &saveptr);
     while( token != NULL)
     {
-#if DEBUG_ELEMENTS
-        RBUSLOG_INFO("Token = [%s]", token);
-#endif
+        RBUSLOG_DEBUG("Token = [%s]", token);
         tokenFound = 0;
 
         if(nextNode == NULL)
@@ -491,15 +463,11 @@ elementNode* retrieveInstanceElement(elementNode* root, const char* elmentName)
             break;
         }
 
-#if DEBUG_ELEMENTS
-        RBUSLOG_INFO("child name=[%s], Token = [%s]", nextNode->name, token);
-#endif
+        RBUSLOG_DEBUG("child name=[%s], Token = [%s]", nextNode->name, token);
 
         if(strcmp(nextNode->name, token) == 0)
         {
-#if DEBUG_ELEMENTS
-            RBUSLOG_INFO("tokenFound!");
-#endif
+            RBUSLOG_DEBUG("tokenFound!");
             tokenFound = 1;
             currentNode = nextNode;
             nextNode = currentNode->child;
@@ -511,14 +479,10 @@ elementNode* retrieveInstanceElement(elementNode* root, const char* elmentName)
 
             while(nextNode != NULL)
             {
-#if DEBUG_ELEMENTS
-                RBUSLOG_INFO("child name=[%s], Token = [%s]", nextNode->name, token);
-#endif
+                RBUSLOG_DEBUG("child name=[%s], Token = [%s]", nextNode->name, token);
                 if(strcmp(nextNode->name, token) == 0)
                 {
-#if DEBUG_ELEMENTS
-                    RBUSLOG_INFO("tokenFound!");
-#endif
+                    RBUSLOG_DEBUG("tokenFound!");
                     tokenFound = 1;
                     currentNode = nextNode;
                     nextNode = currentNode->child;
@@ -536,9 +500,7 @@ elementNode* retrieveInstanceElement(elementNode* root, const char* elmentName)
                             {
                                 if(strlen(nextNode->alias) == tlen-2 && strncmp(nextNode->alias, token+1, tlen-2) == 0)
                                 {
-#if DEBUG_ELEMENTS
-                                    RBUSLOG_INFO("tokenFound by alias %s!", nextNode->alias);
-#endif
+                                    RBUSLOG_DEBUG("tokenFound by alias %s!", nextNode->alias);
                                     tokenFound = 1;
                                     currentNode = nextNode;
                                     nextNode = currentNode->child;
@@ -574,9 +536,7 @@ elementNode* retrieveInstanceElement(elementNode* root, const char* elmentName)
 
     if(tokenFound)
     {
-#if DEBUG_ELEMENTS
-        RBUSLOG_INFO("Found Element with param name [%s]", currentNode->name);
-#endif
+        RBUSLOG_DEBUG("Found Element with param name [%s]", currentNode->name);
         return currentNode;
     }
     else
@@ -685,9 +645,7 @@ void removeElement(elementNode* element)
 {
     elementNode** chain = NULL;
     int numChain = 0;
-#if DEBUG_ELEMENTS
-    printf("removeElement %s\n", element->fullName);
-#endif
+    RBUSLOG_DEBUG("removeElement %s\n", element->fullName);
     createElementChain(element, &chain, &numChain);
     if(numChain > 1)
         removeElementInternal(chain[0], &chain[1], numChain-1);

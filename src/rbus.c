@@ -1889,6 +1889,8 @@ rbusError_t rbus_close(rbusHandle_t handle)
 
     VERIFY_NULL(handle);
 
+    RBUSLOG_DEBUG("%s: %s", __FUNCTION__, handleInfo->componentName);
+
     if(handleInfo->eventSubs)
     {
         while(rtVector_Size(handleInfo->eventSubs))
@@ -2991,10 +2993,10 @@ rbusError_t rbusTable_addRow(
     (void)handle;
     rbusLegacyReturn_t legacyRetCode = RBUS_LEGACY_ERR_FAILURE;
 
-    RBUSLOG_INFO("%s: %s %s", __FUNCTION__, tableName, aliasName);
-
     VERIFY_NULL(handle);
     VERIFY_NULL(tableName);
+
+    RBUSLOG_DEBUG("%s: %s %s", __FUNCTION__, tableName, aliasName);
 
     if(tableName[strlen(tableName)-1] != dot)
     {
@@ -3063,7 +3065,7 @@ rbusError_t rbusTable_removeRow(
     VERIFY_NULL(handle);
     VERIFY_NULL(rowName);
 
-    RBUSLOG_INFO("%s: %s", __FUNCTION__, rowName);
+    RBUSLOG_DEBUG("%s: %s", __FUNCTION__, rowName);
 
     rbusMessage_Init(&request);
     rbusMessage_SetInt32(request, 0);/*TODO: this should be the session ID*/
@@ -3324,11 +3326,11 @@ rbusError_t  rbusEvent_Subscribe(
 {
     rbusError_t errorcode;
 
-    RBUSLOG_INFO("%s: %s", __FUNCTION__, eventName);
-
     VERIFY_NULL(handle);
     VERIFY_NULL(eventName);
     VERIFY_NULL(handler);
+
+    RBUSLOG_DEBUG("%s: %s", __FUNCTION__, eventName);
 
     errorcode = rbusEvent_SubscribeWithRetries(handle, eventName, handler, userData, NULL, 0, 0 , timeout, NULL);
 
@@ -3350,12 +3352,12 @@ rbusError_t  rbusEvent_SubscribeAsync(
 {
     rbusError_t errorcode;
 
-    RBUSLOG_INFO("%s: %s", __FUNCTION__, eventName);
-
     VERIFY_NULL(handle);
     VERIFY_NULL(eventName);
     VERIFY_NULL(handler);
     VERIFY_NULL(subscribeHandler);
+
+    RBUSLOG_DEBUG("%s: %s", __FUNCTION__, eventName);
 
     errorcode = rbusEvent_SubscribeWithRetries(handle, eventName, handler, userData, NULL, 0, 0, timeout, subscribeHandler);
 
@@ -3377,7 +3379,7 @@ rbusError_t rbusEvent_Unsubscribe(
     VERIFY_NULL(handle);
     VERIFY_NULL(eventName);
 
-    RBUSLOG_INFO("%s: %s", __FUNCTION__, eventName);
+    RBUSLOG_DEBUG("%s: %s", __FUNCTION__, eventName);
 
     /*the use of rtVector is inefficient here.  I have to loop through the vector to find the sub by name, 
         then call RemoveItem, which loops through again to find the item by address to destroy */
@@ -3584,7 +3586,7 @@ rbusError_t  rbusEvent_Publish(
     VERIFY_NULL(handle);
     VERIFY_NULL(eventData);
 
-    RBUSLOG_INFO("%s: %s", __FUNCTION__, eventData->name);
+    RBUSLOG_DEBUG("%s: %s", __FUNCTION__, eventData->name);
 
     /*get the node and walk its subscriber list, 
       publishing event to each subscriber*/
@@ -3771,7 +3773,7 @@ rbusError_t rbusMethod_InvokeInternal(
     VERIFY_NULL(handle);
     VERIFY_NULL(methodName);
 
-    RBUSLOG_INFO("%s: %s", __FUNCTION__, methodName);
+    RBUSLOG_DEBUG("%s: %s", __FUNCTION__, methodName);
 
     rbusMessage_Init(&request);
     rbusMessage_SetInt32(request, 0);/*TODO: this should be the session ID*/

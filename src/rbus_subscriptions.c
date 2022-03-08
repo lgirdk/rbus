@@ -608,7 +608,7 @@ void rbusSubscriptions_resubscribeCache(rbusHandle_t handle, rbusSubscriptions_t
     rtListItem item;
     rbusSubscription_t* sub;
 
-    RBUSLOG_INFO("%s: event %s", __FUNCTION__, elementName);
+    RBUSLOG_DEBUG("%s: event %s", __FUNCTION__, elementName);
 
     rtList_GetFront(subscriptions->subList, &item);
 
@@ -646,7 +646,7 @@ void rbusSubscriptions_handleClientDisconnect(rbusHandle_t handle, rbusSubscript
     elementNode* el = NULL;
     struct _rbusHandle* handleInfo = (struct _rbusHandle*)handle;
 
-    RBUSLOG_INFO("%s: %s", __FUNCTION__, listener);
+    RBUSLOG_DEBUG("%s: %s", __FUNCTION__, listener);
 
     rtList_GetFront(subscriptions->subList, &item);
 
