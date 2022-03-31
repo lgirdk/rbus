@@ -90,6 +90,44 @@ extern "C" {
 static int gCountPass = 0;
 static int gCountFail = 0;
 
+
+/* better macros */
+
+#define GET_RETURN_CODE_RESULT_STRING(RC)\
+ ((int)(RC) == 0 ? "SUCCESS" : "FAIL")
+
+#define PRINT_EXEC_RESULT(T,RC)\
+ printf("TEST %s at %s:%d " #T "\n", GET_RETURN_CODE_RESULT_STRING(RC), __FUNCTION__, __LINE__ )
+
+#define PRINT_BOOL_RESULT(B)\
+    printf("TEST %s at %s:%d\n", GET_RETURN_CODE_RESULT_STRING(!(B)), __FUNCTION__, __LINE__ )
+
+#define TEST_BOOL(B)\
+    do\
+    { \
+        TALLY(B);\
+        PRINT_BOOL_RESULT(B);\
+    }while(0);
+
+#define TEST_EXEC(T)\
+    do\
+    {\
+        int rc = (int)(T);\
+        TALLY(rc == 0);\
+        PRINT_EXEC_RESULT(T,rc);\
+    }while(0);
+
+#define TEST_EXEC_RC(T,RC) \
+    do\
+    {\
+        RC = (int)(T);\
+        TALLY(rc == 0);\
+        PRINT_EXEC_RESULT(T,RC);\
+    }while(0);\
+
+#define PRINT_TEST_RESULTS_EXPECTED(TESTNAME,EXPECTED_TOTAL) printf("TEST %s %s: PASS=%d FAIL=%d MISSED=%d\n", \
+    GET_RETURN_CODE_RESULT_STRING(gCountPass != EXPECTED_TOTAL), (TESTNAME), gCountPass, gCountFail, EXPECTED_TOTAL-gCountPass-gCountFail);
+
 #ifdef __cplusplus
 }
 #endif

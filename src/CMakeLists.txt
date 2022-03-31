@@ -25,6 +25,7 @@ add_library(
     rbus
     SHARED
     rbus.c
+    rbus_handle.c
     rbus_message.c
     rbus_value.c
     rbus_property.c

@@ -895,6 +895,24 @@ rbusError_t rbus_getExt(
     int *numProps,
     rbusProperty_t* properties);
 
+/** @fn rbusError_t rbus_getBoolean(
+ *          rbusHandle_t handle,
+ *          char const* paramName,
+ *          int* paramVal)
+ *  @brief A component uses this to perform an boolean get operation.  \n
+ *  Used by: All components that need to get an boolean parameter
+ *  @param      handle          Bus Handle
+ *  @param      paramName       The name of the boolean parameter
+ *  @param      paramVal        The value of the boolean parameter
+ *  @return RBus error code as defined by rbusError_t.
+ *  Possible values are:
+ *  RBUS_ERROR_ACCESS_NOT_ALLOWED: Access to the requested parameter is not permitted
+ */
+rbusError_t rbus_getBoolean(
+    rbusHandle_t handle,
+    char const* paramName,
+    bool* paramVal);
+
 /** @fn rbusError_t rbus_getInt(
  *          rbusHandle_t handle,
  *          char const* paramName,
@@ -1003,6 +1021,26 @@ rbusError_t rbus_setMulti(
     int numProps,
     rbusProperty_t properties,
     rbusSetOptions_t* opts);
+
+
+/** @fn rbusError_t rbus_setBoolean(
+ *          rbusHandle_t handle,
+ *          char const* paramName,
+ *          bool paramVal)
+ *  @brief A component uses this to perform a simple set operation on a
+ *  boolean parameter and commit the operation. \n
+ *  Used by: All components that need to set a boolean parameter
+ *  @param      handle          Bus Handle
+ *  @param      paramName       The name of the string parameter
+ *  @param      paramVal        The value to set the boolean parameter to
+ *  @return RBus error code as defined by rbusError_t.
+ *  Possible values are:
+ *  RBUS_ERROR_ACCESS_NOT_ALLOWED: Access to requested parameter is not permitted.
+ */
+rbusError_t rbus_setBoolean(
+    rbusHandle_t handle,
+    char const* paramName,
+    bool paramVal);
 
 /** @fn rbusError_t rbus_setInt(
  *          rbusHandle_t handle, 

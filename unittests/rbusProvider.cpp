@@ -418,7 +418,7 @@ static int handle_get(const char * destination, const char * method, rbusMessage
   (void) message;
   (void) method;
   (void) hdr;
-  char buffer[32] = {0};
+  char buffer[100] = {0};
   rbusGtest_t *test = (rbusGtest_t *)user_data;
 
   rbusMessage_Init(response);

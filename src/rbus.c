@@ -45,31 +45,23 @@
 #define UNUSED5(a,b,c,d,e)      UNUSED1(a),UNUSED4(b,c,d,e)
 #define UNUSED6(a,b,c,d,e,f)    UNUSED1(a),UNUSED5(b,c,d,e,f)
 
-#define MAX_COMPS_PER_PROCESS               5
 #ifndef FALSE
 #define FALSE                               0
 #endif
 #ifndef TRUE
 #define TRUE                                1
 #endif
-#define VERIFY_NULL(T)          if(NULL == T){ RBUSLOG_WARN(#T" is NULL\n"); return RBUS_ERROR_INVALID_INPUT; }
-#define VERIFY_ZERO(T)          if(0 == T){ RBUSLOG_WARN(#T" is 0\n"); return RBUS_ERROR_INVALID_INPUT; }
+#define VERIFY_NULL(T)          if(NULL == T){ RBUSLOG_WARN(#T" is NULL"); return RBUS_ERROR_INVALID_INPUT; }
+#define VERIFY_ZERO(T)          if(0 == T){ RBUSLOG_WARN(#T" is 0"); return RBUS_ERROR_INVALID_INPUT; }
+
+#define LockMutex() pthread_mutex_lock(&gMutex)
+#define UnlockMutex() pthread_mutex_unlock(&gMutex)
 //********************************************************************************//
 
-
 //******************************* STRUCTURES *************************************//
-
 struct _rbusMethodAsyncHandle
 {
     rtMessageHeader hdr;
-};
-
-struct _rbusHandle handle_array[MAX_COMPS_PER_PROCESS] = {
-    {0,"", NULL, NULL, NULL, NULL, NULL},
-    {0,"", NULL, NULL, NULL, NULL, NULL},
-    {0,"", NULL, NULL, NULL, NULL, NULL},
-    {0,"", NULL, NULL, NULL, NULL, NULL},
-    {0,"", NULL, NULL, NULL, NULL, NULL}
 };
 
 typedef enum _rbus_legacy_support
@@ -102,6 +94,11 @@ typedef enum _rbus_legacy_returns {
     RBUS_LEGACY_ERR_INVALID_PARAMETER_VALUE = 9007,
     RBUS_LEGACY_ERR_NOT_WRITABLE = 9008,
 } rbusLegacyReturn_t;
+
+//********************************************************************************//
+
+//******************************* GLOBALS *****************************************//
+static pthread_mutex_t gMutex = PTHREAD_MUTEX_INITIALIZER;
 
 //********************************************************************************//
 
@@ -1107,18 +1104,9 @@ static int _event_subscribe_callback_handler(char const* object,  char const* ev
 
 static void _client_disconnect_callback_handler(const char * listener)
 {
-    int i;
-    for(i = 0; i < MAX_COMPS_PER_PROCESS; i++)
-    {
-        if(handle_array[i].inUse)
-        {
-            if(handle_array[i].subscriptions)
-            {
-                rbusSubscriptions_handleClientDisconnect(&handle_array[i], handle_array[i].subscriptions, listener);
-            }
-        }
-    }
-
+    LockMutex();
+    rbusHandleList_ClientDisconnect(listener);
+    UnlockMutex();
 }
 
 void _subscribe_async_callback_handler(rbusHandle_t handle, rbusEventSubscription_t* subscription, rbusError_t error)
@@ -1172,11 +1160,16 @@ static int _master_event_callback_handler(char const* sender, char const* eventN
     rbusFilter_t filter = NULL;
     int32_t componentId = -1;
     rbusEventSubscription_t* subscription = NULL;
+    struct _rbusHandle* handleInfo = NULL;
     UNUSED1(userData);
 
     rbusEventData_updateFromMessage(&event, &filter, &componentId, message);
 
-    if(componentId < 0 || componentId >= MAX_COMPS_PER_PROCESS)
+    LockMutex();
+    handleInfo = rbusHandleList_GetByComponentID(componentId);
+    UnlockMutex();
+
+    if(!handleInfo)
     {
         RBUSLOG_INFO("Received master event callback with invalid componentId: sender=%s eventName=%s componentId=%d", sender, eventName, componentId);
         return RTMESSAGE_BUS_EVENT_NOT_HANDLED;
@@ -1184,7 +1177,7 @@ static int _master_event_callback_handler(char const* sender, char const* eventN
 
     RBUSLOG_DEBUG("Received master event callback: sender=%s eventName=%s componentId=%d", sender, eventName, componentId);
 
-    subscription = rbusEventSubscription_find(handle_array[componentId].eventSubs, eventName, filter);
+    subscription = rbusEventSubscription_find(handleInfo->eventSubs, eventName, filter);
 
     if(subscription)
     {
@@ -2084,120 +2077,184 @@ static int _callback_handler(char const* destination, char const* method, rbusMe
     return 0;
 }
 
+/*
+    Handle once per process initialization or deinitialization needed by rbus_open
+ */
+static void _rbus_open_pre_initialize(bool retain)
+{
+    RBUSLOG_DEBUG("%s", __FUNCTION__);
+    static bool sRetained = false;
+    
+    if(retain && !sRetained)
+    {
+        rbusConfig_CreateOnce();
+        rbus_registerMasterEventHandler(_master_event_callback_handler, NULL);
+        sRetained = true;
+    }
+    else if(!retain && sRetained)
+    {
+        rbusConfig_Destroy();
+        sRetained = false;
+    }
+}
+
+__attribute__((destructor))
+static void _rbus_mutex_destructor()
+{
+    pthread_mutex_destroy(&gMutex);
+}
+
 //******************************* Bus Initialization *****************************//
+
 rbusError_t rbus_open(rbusHandle_t* handle, char const* componentName)
 {
-    rbusError_t errorcode = RBUS_ERROR_SUCCESS;
+    rbusError_t ret = RBUS_ERROR_SUCCESS;
     rbus_error_t err = RTMESSAGE_BUS_SUCCESS;
-    int foundIndex = -1;
-    int  i = 0;
-    rbusHandle_t tmpHandle;
+    rbusHandle_t tmpHandle = NULL;
+    static int32_t sLastComponentId = 0;
 
-    VERIFY_NULL(handle);
-    VERIFY_NULL(componentName);
+    if(!handle || !componentName)
+    {
+        if(!handle)
+            RBUSLOG_WARN("%s(%s): handle is NULL", __FUNCTION__, componentName);
+        if(!componentName)
+            RBUSLOG_WARN("%s(%s): componentName is NULL", __FUNCTION__, componentName);
+        ret = RBUS_ERROR_INVALID_INPUT;
+        goto exit_error0;
+    }
 
-    *handle = NULL;
+    RBUSLOG_INFO("%s(%s)", __FUNCTION__, componentName);
 
-    RBUSLOG_INFO("%s: %s", __FUNCTION__, componentName);
+    LockMutex();
 
-    rbusConfig_CreateOnce();
+    _rbus_open_pre_initialize(true);
 
     /*
         Per spec: If a component calls this API more than once, any previous busHandle 
         and all previous data element registrations will be canceled.
     */
-    for(i = 0; i < MAX_COMPS_PER_PROCESS; i++)
+    tmpHandle = rbusHandleList_GetByName(componentName);
+
+    if(tmpHandle)
     {
-        if(handle_array[i].inUse && strcmp(componentName, handle_array[i].componentName) == 0)
-        {
-            rbus_close(&handle_array[i]);
-        }
+        UnlockMutex();
+        RBUSLOG_WARN("%s(%s): closing previously opened component with the same name", __FUNCTION__, componentName);
+        rbus_close(tmpHandle);
+        LockMutex();
     }
 
-    /*  Find open item in array: 
-        TODO why can't this just be a rtVector we push/remove from? */
-    for(i = 0; i < MAX_COMPS_PER_PROCESS; i++)
+    if(rbusHandleList_IsFull())
     {
-        if(!handle_array[i].inUse)
-        {
-            foundIndex = i;
-            break;
-        }
-    }
-
-    if(foundIndex == -1)
-    {
-        RBUSLOG_ERROR("<%s>: Exceeded the allowed number of components per process!", __FUNCTION__);
-        return RBUS_ERROR_OUT_OF_RESOURCES;
+        RBUSLOG_ERROR("%s(%s): at maximum handle count %d", __FUNCTION__, componentName, RBUS_MAX_HANDLES);
+        ret = RBUS_ERROR_OUT_OF_RESOURCES;
+        goto exit_error1;
     }
 
     /*
         Per spec: the first component that calls rbus_open will establishes a new socket connection to the bus broker.
-        Note: rbus_openBrokerConnection returns RTMESSAGE_BUS_ERROR_INVALID_STATE if a connection is already established.
-        We cannot expect our 1st call to rbus_openBrokerConnection to succeed, as another library in this process
-        may have already called rbus_openBrokerConnection.  This would happen if the ccsp_message_bus is already
-        running with rbus-core in the same process.  Thus we must call again and check the return code.
+        The connection might already be open due to a previous rbus_open or ccsp msg bus init.
     */
-    err = rbus_openBrokerConnection(componentName);
-
-    if( err != RTMESSAGE_BUS_SUCCESS &&
-        err != RTMESSAGE_BUS_ERROR_INVALID_STATE/*connection already opened. which is allowed*/)
+    if(!rbus_getConnection())
     {
-        RBUSLOG_ERROR("<%s>: rbus_openBrokerConnection() failed with %d", __FUNCTION__, err);
-        return RBUS_ERROR_BUS_ERROR;
+        RBUSLOG_DEBUG("%s(%s): opening broker connection", __FUNCTION__, componentName);
+
+        if((err = rbus_openBrokerConnection(componentName)) != RTMESSAGE_BUS_SUCCESS)
+        {
+            RBUSLOG_ERROR("%s(%s): rbus_openBrokerConnection error %d", __FUNCTION__, componentName, err);
+            goto exit_error1;
+        }
+
+        err = rbus_registerClientDisconnectHandler(_client_disconnect_callback_handler);
+        if(err != RTMESSAGE_BUS_SUCCESS)
+        {
+            RBUSLOG_ERROR("%s(%s): rbus_registerClientDisconnectHandler error %d", __FUNCTION__, componentName, err);
+            goto exit_error2;
+        }
     }
 
-    /*call after opening broker connection -- currently safe to call for multiple rbus_open calls*/
-    err = rbus_registerClientDisconnectHandler(_client_disconnect_callback_handler);
-    RBUSLOG_DEBUG("registering client disconnect handler %s", err == RTMESSAGE_BUS_SUCCESS ? "succeeded" : "failed");
-
-    tmpHandle = &handle_array[foundIndex];
-
-    RBUSLOG_INFO("Bus registration successfull!");
-    RBUSLOG_DEBUG("<%s>: Try rbus_registerObj() for component base object [%s]!", __FUNCTION__, componentName);
+    tmpHandle = rt_calloc(1, sizeof(struct _rbusHandle));
 
     if((err = rbus_registerObj(componentName, _callback_handler, tmpHandle)) != RTMESSAGE_BUS_SUCCESS)
     {
-        /*Note that this will fail if a previous rbus_open was made with the same componentName
-          because rbus_registerObj doesn't allow the same name to be registered twice.  This would
-          also fail if ccsp using rbus-core has registered the same object name */
-        RBUSLOG_ERROR("<%s>: rbus_registerObj() failed with %d", __FUNCTION__, err);
-        return RBUS_ERROR_BUS_ERROR;
+        /*This will fail if the same name was previously registered (by another rbus_open or ccsp msg bus init)*/
+        RBUSLOG_ERROR("%s(%s): rbus_registerObj error %d", __FUNCTION__, componentName, err);
+        goto exit_error3;
     }
-
-    RBUSLOG_DEBUG("<%s>: rbus_registerObj() Success!", __FUNCTION__);
 
     if((err = rbus_registerSubscribeHandler(componentName, _event_subscribe_callback_handler, tmpHandle)) != RTMESSAGE_BUS_SUCCESS)
     {
-        RBUSLOG_ERROR("<%s>: rbus_registerSubscribeHandler() failed with %d", __FUNCTION__, err);
-        return RBUS_ERROR_BUS_ERROR;
+        RBUSLOG_ERROR("%s(%s): rbus_registerSubscribeHandler error %d", __FUNCTION__, componentName, err);
+        goto exit_error4;
     }
 
-    RBUSLOG_DEBUG("<%s>: rbus_registerSubscribeHandler() Success!", __FUNCTION__);
+    tmpHandle->componentName = strdup(componentName);
+    tmpHandle->componentId = ++sLastComponentId;
+    tmpHandle->connection = rbus_getConnection();
+    rtVector_Create(&tmpHandle->eventSubs);
+    rtVector_Create(&tmpHandle->messageCallbacks);
 
-    rbus_registerMasterEventHandler(_master_event_callback_handler, NULL);
-
-    handle_array[foundIndex].inUse = 1;
-    handle_array[foundIndex].componentName = strdup(componentName);
     *handle = tmpHandle;
-    rtVector_Create(&handle_array[foundIndex].eventSubs);
-    rtVector_Create(&handle_array[foundIndex].messageCallbacks);
-    handle_array[foundIndex].connection = rbus_getConnection();
 
-    return errorcode;
+    rbusHandleList_Add(tmpHandle);
+
+    UnlockMutex();
+
+    RBUSLOG_INFO("%s(%s) success", __FUNCTION__, componentName);
+
+    return RBUS_ERROR_SUCCESS;
+
+exit_error4:
+
+    if((err = rbus_unregisterObj(componentName)) != RTMESSAGE_BUS_SUCCESS)
+        RBUSLOG_ERROR("%s(%s): rbus_unregisterObj error %d", __FUNCTION__, componentName, err);
+
+exit_error3:
+
+    if(rbus_getConnection() && rbusHandleList_IsEmpty())
+        if((err = rbus_unregisterClientDisconnectHandler()) != RTMESSAGE_BUS_SUCCESS)
+            RBUSLOG_ERROR("%s(%s): rbus_unregisterClientDisconnectHandler error %d", __FUNCTION__, componentName, err);
+
+exit_error2:
+
+    if(rbus_getConnection() && rbusHandleList_IsEmpty())
+        if((err = rbus_closeBrokerConnection()) != RTMESSAGE_BUS_SUCCESS)
+            RBUSLOG_ERROR("%s(%s): rbus_closeBrokerConnection error %d", __FUNCTION__, componentName, err);
+
+exit_error1:
+
+    if(rbusHandleList_IsEmpty())
+    {
+        _rbus_open_pre_initialize(false);
+    }
+
+    UnlockMutex();
+
+    if(tmpHandle)
+        rt_free(tmpHandle);
+
+exit_error0:
+
+    if(handle)
+        *handle = NULL;
+
+    if(ret == RBUS_ERROR_SUCCESS)
+        ret = RBUS_ERROR_BUS_ERROR;
+
+    return ret;
 }
 
 rbusError_t rbus_close(rbusHandle_t handle)
 {
-    rbusError_t errorcode = RBUS_ERROR_SUCCESS;
+    rbusError_t ret = RBUS_ERROR_SUCCESS;
     rbus_error_t err = RTMESSAGE_BUS_SUCCESS;
     struct _rbusHandle* handleInfo = (struct _rbusHandle*)handle;
+    char* componentName = NULL;
 
     VERIFY_NULL(handle);
 
-    RBUSLOG_DEBUG("%s: %s", __FUNCTION__, handleInfo->componentName);
+    RBUSLOG_INFO("%s(%s)", __FUNCTION__, handleInfo->componentName);
 
-    RBUSLOG_INFO("%s: %s", __FUNCTION__, handleInfo->componentName);
+    LockMutex();
 
     if(handleInfo->eventSubs)
     {
@@ -2210,7 +2267,8 @@ rbusError_t rbus_close(rbusHandle_t handle)
         count = (int)rtVector_Size(handleInfo->eventSubs);
         if(count)
         {
-            RBUSLOG_WARN("<%s>: %d event subs for [%s] were not unsubscribed", __FUNCTION__, count, handleInfo->componentName);
+            RBUSLOG_ERROR("%s(%s): failed to unsubscribe %d subscriptions", __FUNCTION__, handleInfo->componentName, count);
+            ret = RBUS_ERROR_BUS_ERROR;
         }
         rtVector_Destroy(handleInfo->eventSubs, NULL);
         handleInfo->eventSubs = NULL;
@@ -2239,50 +2297,44 @@ rbusError_t rbus_close(rbusHandle_t handle)
         handleInfo->elementRoot = NULL;
     }
 
-    if((err = rbus_unregisterObj(handleInfo->componentName)) != RTMESSAGE_BUS_SUCCESS) //FIXME: shouldn't rbus_closeBrokerConnection be called even if this fails ?
+    if((err = rbus_unregisterObj(handleInfo->componentName)) != RTMESSAGE_BUS_SUCCESS)
     {
-        RBUSLOG_WARN("<%s>: rbus_unregisterObj() for [%s] fails with %d", __FUNCTION__, handleInfo->componentName, err);
-        errorcode = RBUS_ERROR_INVALID_HANDLE;
-    }
-    else
-    {
-        int canClose = 1;
-        int i;
-
-        RBUSLOG_DEBUG("<%s>: rbus_unregisterObj() for [%s] Success!!", __FUNCTION__, handleInfo->componentName);
-        free(handleInfo->componentName);
-        handleInfo->componentName = NULL;
-        handleInfo->inUse = 0;
-
-        for(i = 0; i < MAX_COMPS_PER_PROCESS; i++)
-        {
-            if(handle_array[i].inUse)
-            {
-                canClose = 0;
-                break;
-            }
-        }
-
-        if(canClose)
-        {
-            //calling before closing connection
-            rbus_unregisterClientDisconnectHandler();
-
-            if((err = rbus_closeBrokerConnection()) != RTMESSAGE_BUS_SUCCESS)
-            {
-                RBUSLOG_WARN("<%s>: rbus_closeBrokerConnection() fails with %d", __FUNCTION__, err);
-                errorcode = RBUS_ERROR_BUS_ERROR;
-            }
-            else
-            {
-                RBUSLOG_INFO("Bus unregistration Successfull!");
-            }
-
-            rbusConfig_Destroy();
-        }
+        RBUSLOG_ERROR("%s(%s): rbus_unregisterObj error %d", __FUNCTION__, handleInfo->componentName, err);
+        ret = RBUS_ERROR_INVALID_HANDLE;
     }
 
-    return errorcode;
+    componentName = handleInfo->componentName;
+
+    rbusHandleList_Remove(handleInfo);
+
+    if(rbusHandleList_IsEmpty())
+    {
+        RBUSLOG_DEBUG("%s(%s): closing broker connection", __FUNCTION__, componentName);
+
+        //calling before closing connection
+        if((err = rbus_unregisterClientDisconnectHandler()) != RTMESSAGE_BUS_SUCCESS)
+        {
+            RBUSLOG_ERROR("%s(%s): rbus_unregisterClientDisconnectHandler error %d", __FUNCTION__, componentName, err);
+            ret = RBUS_ERROR_BUS_ERROR;
+        }
+
+        if((err = rbus_closeBrokerConnection()) != RTMESSAGE_BUS_SUCCESS)
+        {
+            RBUSLOG_ERROR("%s(%s): rbus_closeBrokerConnection error %d", __FUNCTION__, componentName, err);
+            ret = RBUS_ERROR_BUS_ERROR;
+        }
+
+        _rbus_open_pre_initialize(false);
+    }
+
+    UnlockMutex();
+
+    if(ret == RBUS_ERROR_SUCCESS)
+        RBUSLOG_INFO("%s(%s) success", __FUNCTION__, componentName);
+
+    free(componentName);
+
+    return ret;
 }
 
 rbusError_t rbus_regDataElements(
@@ -2325,7 +2377,7 @@ rbusError_t rbus_regDataElements(
 
         if((err = rbus_addElement(handleInfo->componentName, name)) != RTMESSAGE_BUS_SUCCESS)
         {
-            RBUSLOG_ERROR("<%s>: failed to add element with core [%s] err=%d!!", __FUNCTION__, name, err);
+            RBUSLOG_ERROR("%s: failed to add element with core [%s] err=%d!!", __FUNCTION__, name, err);
             rc = RBUS_ERROR_ELEMENT_NAME_DUPLICATE;
             break;
         }
@@ -2334,7 +2386,7 @@ rbusError_t rbus_regDataElements(
             elementNode* node;
             if((node = insertElement(handleInfo->elementRoot, &elements[i])) == NULL)
             {
-                RBUSLOG_ERROR("<%s>: failed to insert element [%s]!!", __FUNCTION__, name);
+                RBUSLOG_ERROR("%s: failed to insert element [%s]!!", __FUNCTION__, name);
                 rc = RBUS_ERROR_OUT_OF_RESOURCES;
                 break;
             }
@@ -2377,10 +2429,10 @@ rbusError_t rbus_unregDataElements(
         char const* name = elements[i].name;
 /*
         if(rbus_unregisterEvent(handleInfo->componentName, name) != RTMESSAGE_BUS_SUCCESS)
-            RBUSLOG_INFO("<%s>: failed to remove event [%s]!!", __FUNCTION__, name);
+            RBUSLOG_INFO("%s: failed to remove event [%s]!!", __FUNCTION__, name);
 */
         if(rbus_removeElement(handleInfo->componentName, name) != RTMESSAGE_BUS_SUCCESS)
-            RBUSLOG_WARN("<%s>: failed to remove element from core [%s]!!", __FUNCTION__, name);
+            RBUSLOG_WARN("%s: failed to remove element from core [%s]!!", __FUNCTION__, name);
 
 /*      TODO: we need to remove all instance elements that this registration element instantiated
         rbusValueChange_RemoveParameter(handle, NULL, name);
@@ -2854,6 +2906,9 @@ static rbusError_t rbus_getByType(rbusHandle_t handle, char const* paramName, vo
             {
                 switch(type)
                 {
+                    case RBUS_BOOLEAN:
+                        *((bool*)paramVal) = rbusValue_GetBoolean(value);
+                        break;
                     case RBUS_INT32:
                         *((int*)paramVal) = rbusValue_GetInt32(value);
                         break;
@@ -2878,6 +2933,11 @@ static rbusError_t rbus_getByType(rbusHandle_t handle, char const* paramName, vo
         }
     }
     return errorcode;
+}
+
+rbusError_t rbus_getBoolean(rbusHandle_t handle, char const* paramName, bool* paramVal)
+{
+    return rbus_getByType(handle, paramName, paramVal, RBUS_BOOLEAN);
 }
 
 rbusError_t rbus_getInt(rbusHandle_t handle, char const* paramName, int* paramVal)
@@ -3256,6 +3316,9 @@ static rbusError_t rbus_setByType(rbusHandle_t handle, char const* paramName, vo
 
     switch(type)
     {
+        case RBUS_BOOLEAN:
+            rbusValue_SetBoolean(value, *((bool*)paramVal));
+            break;
         case RBUS_INT32:
             rbusValue_SetInt32(value, *((int*)paramVal));
             break;
@@ -3275,6 +3338,11 @@ static rbusError_t rbus_setByType(rbusHandle_t handle, char const* paramName, vo
     rbusValue_Release(value);
 
     return errorcode;
+}
+
+rbusError_t rbus_setBoolean(rbusHandle_t handle, char const* paramName, bool paramVal)
+{
+    return rbus_setByType(handle, paramName, &paramVal, RBUS_BOOLEAN);
 }
 
 rbusError_t rbus_setInt(rbusHandle_t handle, char const* paramName, int paramVal)
@@ -3767,7 +3835,6 @@ static rbusError_t rbusEvent_SubscribeWithRetries(
     int destNotFoundSleep = 1000; /*miliseconds*/
     int destNotFoundTimeout;
     struct _rbusHandle* handleInfo = (struct _rbusHandle*)handle;
-    int32_t componentId = (int32_t)(handleInfo - handle_array);
 
     if( rbusEventSubscription_find(handleInfo->eventSubs, eventName, filter) ||
         rbusAsyncSubscribe_GetSubscription(handle, eventName, filter))
@@ -3799,7 +3866,7 @@ static rbusError_t rbusEvent_SubscribeWithRetries(
         rbusFilter_Retain(sub->filter);
 
 
-    payload = rbusEvent_CreateSubscribePayload(sub, componentId);
+    payload = rbusEvent_CreateSubscribePayload(sub, handleInfo->componentId);
 
     if(sub->asyncHandler)
     {
@@ -3938,7 +4005,6 @@ rbusError_t rbusEvent_Unsubscribe(
     char const*         eventName)
 {
     struct _rbusHandle* handleInfo = (struct _rbusHandle*)handle;
-    int32_t componentId = (int32_t)(handleInfo - handle_array);
     rbusEventSubscription_t* sub;
 
     VERIFY_NULL(handle);
@@ -3952,7 +4018,7 @@ rbusError_t rbusEvent_Unsubscribe(
 
     if(sub)
     {
-        rbusMessage payload = rbusEvent_CreateSubscribePayload(sub, componentId);
+        rbusMessage payload = rbusEvent_CreateSubscribePayload(sub, handleInfo->componentId);
 
         rbus_error_t coreerr = rbus_unsubscribeFromEvent(NULL, eventName, payload);
 
@@ -4082,7 +4148,6 @@ rbusError_t rbusEvent_UnsubscribeEx(
     VERIFY_ZERO(numSubscriptions);
 
     struct _rbusHandle* handleInfo = (struct _rbusHandle*)handle;
-    int32_t componentId = (int32_t)(handleInfo - handle_array);
     int i;
 
     //TODO we will call unsubscribe for every sub in list
@@ -4106,7 +4171,7 @@ rbusError_t rbusEvent_UnsubscribeEx(
             rbus_error_t coreerr;
             rbusMessage payload;
 
-            payload = rbusEvent_CreateSubscribePayload(sub, componentId);
+            payload = rbusEvent_CreateSubscribePayload(sub, handleInfo->componentId);
 
             coreerr = rbus_unsubscribeFromEvent(NULL, sub->eventName, payload);
 

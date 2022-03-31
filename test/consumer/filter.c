@@ -20,7 +20,7 @@
 #include <rbus.h>
 #include "../../src/rbus_buffer.h"
 #include "../common/test_macros.h"
-#include <memory.h>
+#include <string.h>
 #include <stdlib.h>
 static int gDuration = 1;
 

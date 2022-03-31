@@ -28,7 +28,6 @@ else ()
   set(PROJECT_VERSION "2.0.0")
 endif (POLICY CMP0048)
 
-set(CMAKE_BUILD_TYPE Debug)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/")
 
 enable_testing()

@@ -27,45 +27,141 @@
 #include <string.h>
 #include <getopt.h>
 #include <rbus.h>
-#include "../common/runningParamHelper.h"
+#include <rtLog.h>
 #include "../common/test_macros.h"
 
+#define TEST_EVENTS 1
+#define TEST_PARAMS 1
+
+static int gNumConsumers = 5;/*each consumer will get its own thread*/
+static int gNumIterations = 1;/*for each iteration, any previous consumers are destroyed and new consumer created*/
+static int gIterationDuration = 60; /*seconds for each iteration*/
+static int gMaxConsumerWait = 0; /*max time in usecs a consumer thread sleeps before starting*/
+static int* gEventCounts = NULL;
 int reopened = 0;
 
+int parseID(char const* name)
+{
+    char* pfirst;
+    char* pend;
+    char buff[64];
+    int i = 0;
+    pfirst = strstr(name, "Device.MultiProvider");
+    if(!pfirst)
+    {
+        printf("parseID failed %s\n", name);
+        return 0;
+    }
+    pfirst += strlen("Device.MultiProvider");
+    pend = pfirst;
+    while(*pend >= '0' && *pend <= '9')
+    {
+        buff[i++] = *pend;
+        pend++;
+    }
+    buff[i] = 0;
+    int id = atoi(buff);
+    printf("parseID %s=%d\n", name, id);
+    return id; 
+}
+
+#if TEST_EVENTS
 static void eventHandler(
     rbusHandle_t handle,
     rbusEvent_t const* event,
     rbusEventSubscription_t* subscription)
 {
-    rbusValue_t value;
+    char const* str = NULL;
+    char expect[100];
+    int id = parseID(event->name);
     (void)(handle);
+    (void)(subscription);
+    TEST_EXEC(rbusObject_GetPropertyString(event->data, "value", &str, NULL));
+    sprintf(expect, "MultiProvider%d %d", id, ++gEventCounts[id-1]);
+    printf("eventHandler expect=%s actual=%s\n", expect, str);
+    TEST_EXEC(strcmp(str, expect));
+}
+#endif
 
-    PRINT_TEST_EVENT("test_MultiConsumer", event, subscription);
-    
-    value = rbusObject_GetValue(event->data, "value");
+void* run_consumer(void* p)
+{
+    rbusError_t rc;
+    int id;
+    (void)p;
+    rbusHandle_t handle;
+    char componentName[100];
+    char elemName[3][100];
+    int usecWait = 0;
+    int timeLeft = gIterationDuration;
+    int paramValNum = 0;
+#if TEST_PARAMS
+    int numGets = 0;
+#endif    
+    static int sLastIndex = 0;
 
-    if(value)
+    id = ++sLastIndex;
+
+    if(gMaxConsumerWait > 0)
     {
-        char* str = rbusValue_ToDebugString(value, NULL, 0);
-        printf("eventHandler called:\n %s\n userData:%s\n", str, (char*)subscription->userData);
-        free(str);
-
-        str=rbusValue_ToString(value, NULL, 0);
-        if(reopened && strcmp((char*)subscription->userData, "MultiConsumer1")==0)
-        {
-            TALLY(false);
-            printf("_test_:eventHandler reopen ERROR: should not have been called userData=[%s] value=[%s]\n", 
-                (char*)subscription->userData, str);
-        }
-        else
-        {
-            TALLY(true);
-            printf("_test_:eventHandler userData:'%s' value:'%s'\n", 
-                (char*)subscription->userData, str);
-        }
-
-        free(str);
+        usecWait = rand() % gMaxConsumerWait;
+        usleep(usecWait);
     }
+
+    sprintf(componentName, "MultiConsumer%d", id);
+    sprintf(elemName[0], "Device.MultiProvider%d.Run", id);
+    sprintf(elemName[1], "Device.MultiProvider%d.Param", id);
+    sprintf(elemName[2], "Device.MultiProvider%d.Event!", id);
+
+    TEST_EXEC_RC(rbus_open(&handle, componentName), rc)
+    if(rc)
+    {
+        return NULL;
+    }
+
+    TEST_EXEC_RC(rbus_setBoolean(handle, elemName[0], true), rc)
+    if(rc)
+    {
+        rbus_close(handle);
+        return NULL;
+    }
+
+#if TEST_EVENTS
+    TEST_EXEC(rbusEvent_Subscribe(handle, elemName[2], eventHandler, componentName, 0));
+#endif
+
+    while(timeLeft >= 0)
+    {
+        sleep(1);
+        timeLeft--;
+#if TEST_PARAMS
+        if(numGets++ < 3)
+        {
+            char setval[50];
+            sprintf(setval, "value-%d-%d", id, paramValNum++);
+            TEST_EXEC_RC(rbus_setStr(handle, elemName[1], setval), rc)
+            if(!rc)
+            {
+                char* getval = NULL;
+                TEST_EXEC_RC(rbus_getStr(handle, elemName[1], &getval), rc)
+                if(!rc)
+                {
+                    TEST_EXEC(strcmp(getval, setval))
+                    free(getval);
+                }
+            }
+        }
+#endif        
+    }
+
+#if TEST_EVENTS
+    TEST_EXEC(rbusEvent_Unsubscribe(handle, elemName[2]));
+#endif
+
+    TEST_EXEC(rbus_setBoolean(handle, elemName[0], false));
+
+    TEST_EXEC(rbus_close(handle));
+
+    return NULL;
 }
 
 int main(int argc, char *argv[])
@@ -73,178 +169,89 @@ int main(int argc, char *argv[])
     (void)(argc);
     (void)(argv);
 
-    rbusHandle_t handles[5] = {NULL};
+    pthread_t* threads = NULL;
+    int i,j;
+    srand(time(NULL));
 
-    /*create 5 consumers*/
-    char* componentNames[] = {
-        "MultiConsumer1",
-        "MultiConsumer2",
-        "MultiConsumer3",
-        "MultiConsumer4",
-        "MultiConsumer5"
-    };
-
-    char* elements[5][2] = {
-        {"Device.MultiProvider1.Param", 
-         "Device.MultiProvider1.Event!"},
-        {"Device.MultiProvider2.Param", 
-         "Device.MultiProvider2.Event!"},
-        {"Device.MultiProvider3.Param", 
-         "Device.MultiProvider3.Event!"},
-        {"Device.MultiProvider4.Param", 
-         "Device.MultiProvider4.Event!"},
-        {"Device.MultiProvider5.Param", 
-         "Device.MultiProvider5.Event!"},
-    };
-
-    int rc = RBUS_ERROR_SUCCESS;
-    int i;
-    int loopFor = 8;
-    int eventCount = 0;
-    rbus_setLogLevel(RBUS_LOG_DEBUG);
-    printf("consumer: opening 5 handles\n");
-    for(i = 0; i < 5; ++i)
+    while (1)
     {
-        rc = rbus_open(&handles[i], componentNames[i]);
-        if(rc == RBUS_ERROR_SUCCESS)
+        int option_index = 0;
+        int c;
+
+        static struct option long_options[] = 
         {
-            printf("_test_:rbus_open result:SUCCESS component:%s\n", componentNames[i]);
-        }
-        else
+            {"providers",       required_argument,  0, 'p' },
+            {"iterations",      required_argument,  0, 'i' },
+            {"duration",        required_argument,  0, 'd' },
+            {"wait",            required_argument,  0, 'w' },
+            {"log",             required_argument,  0, 'l' },
+            {"help",            no_argument,        0, 'h' },
+            {0, 0, 0, 0}
+        };
+
+        c = getopt_long(argc, argv, "p:i:d:w:l:h", long_options, &option_index);
+        if (c == -1)
+            break;
+
+        switch (c)
         {
-            printf("_test_:rbus_open result:FAIL component:%s rc:%d\n", componentNames[i], rc);
-            if(i == 0)
-            {
-                printf("provider: failed to open 1st handle\n");
-                return 1;
-            }
-            else
-            {
-                continue;
-            }
+        case 'p':
+            gNumConsumers = atoi(optarg);
+            break;
+        case 'i':
+            gNumIterations = atoi(optarg);
+            break;
+        case 'd':
+            gIterationDuration = atoi(optarg);
+            break;
+        case 'w':
+            gMaxConsumerWait = atoi(optarg);
+            break;
+        case 'l':
+            rtLog_SetLevel(rtLogLevelFromString(optarg));
+            break;
+        case 'h':
+        default:
+            printf("rbusTestMultiConsumer help:\n");
+            printf("-p --providers: number of providers running. 1 consumer per provider will be created per iteration\n");
+            printf("-i --iterations: number of iterations\n");
+            printf("-d --duration: duration of each iteration\n");
+            printf("-w --wait: wait time each thread will take before running\n");
+            printf("-l --log: log level (debug, info, warn, error, fatal)\n");
+            exit(0);
+            break;
         }
     }
 
-    /*tell provider we are starting*/
-    if(runningParamConsumer_Set(handles[0], "Device.MultiProvider.TestRunning", true) != RBUS_ERROR_SUCCESS)
-    {
-        printf("consumer: provider didn't get ready in time\n");
-        goto exit1;
-    }
+    printf("consumers=%d, iterations=%d, iteration duration=%d seconds, max consumer wait=%d usecs\n", 
+        gNumConsumers, gNumIterations, gIterationDuration, gMaxConsumerWait);
 
-    printf("consumer: subscribing 5 handles\n");
-    for(i = 0; i < 5; ++i)
+    gEventCounts = calloc(1, gNumConsumers * sizeof(int));
+
+    for(j = 0; j < gNumIterations; ++j)
     {
-        if(handles[i])
+        printf("starting iteration %d of %d with %d consumer threads\n", j+1, gNumIterations, gNumConsumers);
+
+        threads = malloc(gNumConsumers * sizeof(pthread_t));
+
+        for(i = 0; i < gNumConsumers; ++i)
+            pthread_create(&threads[i], NULL, run_consumer, NULL);
+
+        for(i = 0; i < gIterationDuration; ++i)
         {
-            rc = rbusEvent_Subscribe(handles[i], elements[i][1], eventHandler, componentNames[i], 0);
-            if(rc == RBUS_ERROR_SUCCESS)
-            {
-                printf("_test_:rbusEvent_Subscribe result:SUCCESS event:%s\n", elements[i][1]);
-            }
-            else
-            {
-                printf("_test_:rbusEvent_Subscribe result:FAIL event:%s rc:%d\n", elements[i][1], rc);
-            }
-        }
-    }
-
-    while (loopFor--)
-    {
-        eventCount++;
-        sleep(2);
-
-        printf("consumer: get param for 5 handles\n");
-        for(i = 0; i < 5; ++i)
-        {
-            if(handles[i])
-            {
-                rbusValue_t value;
-
-                rc = rbus_get(handles[i], elements[i][0], &value);
-
-                if(rc == RBUS_ERROR_SUCCESS)
-                {
-                    if(rbusValue_GetType(value) == RBUS_STRING)
-                    {
-                        char* val;
-                        printf("_test_:rbus_get result:SUCCESS param:'%s' value:'%s'\n", elements[i][0], val=rbusValue_ToString(value,0,0));
-                        free(val);                        
-                    }
-                    else
-                    {
-                        printf("_test_ rbus_get result:FAIL param:'%s' error:'unexpected type %d'\n", elements[i][0], rbusValue_GetType(value));
-                    }
-                }
-                else
-                {
-                    printf("_test_:rbus_get result:FAIL param:'%s' rc:%d\n", elements[i][0], rc);
-                }
-
-                rbusValue_Release(value);
-            }
+            printf("iteration %d of %d with %d of %d seconds remaining for this iteration\n", j+1, gNumIterations, i+1, gIterationDuration);
+            sleep(1);
         }
 
-        if(loopFor == 2)
-        {
-            printf("consumer: reopening 1 handle\n");
+        for(i = 0; i < gNumConsumers; ++i)
+            pthread_join(threads[i], NULL);
 
-            /*test that calling rbus_open on an already openend component will 
-                close its previous handle and create a new working handle 
-                and valgrind should not show leaks.
-                handle 0 should not be subscribed and should no longer get eventHandler calls for it
-                however, rbus_get above on the next loops should work */
-            i = 0;
-            rc = rbus_open(&handles[i], componentNames[i]);
-            if(rc == RBUS_ERROR_SUCCESS)
-            {
-                printf("_test_:rbus_open-reopen result:SUCCESS component:%s\n", componentNames[i]);
-            }
-            else
-            {
-                printf("_test_:rbus_open-reopen result:FAIL component:%s rc:%d\n", componentNames[i], rc);
-            }
-        }
+        free(threads);
     }
+    
+    free(gEventCounts);
 
-    printf("consumer: unsubscribing 4 handles\n");
-    for(i = 1; i < 5; ++i)
-    {
-        if(handles[i])
-        {
-            rc = rbusEvent_Unsubscribe(handles[i], elements[i][1]);
-            if(rc == RBUS_ERROR_SUCCESS)
-            {
-                printf("_test_:rbusEvent_Unsubscribe result:SUCCESS event:'%s'\n", elements[i][1]);
-            }
-            else
-            {
-                printf("_test_:rbusEvent_Unsubscribe result:FAIL event:'%s' rc:%d\n", elements[i][1], rc);
-            }
-        }
-    }
+    PRINT_TEST_RESULTS_EXPECTED("rbusTestMultiConsumer", 21 * gNumConsumers);
 
-    /*tell provider we are done (after we unsubcribe to avoid race condition)*/
-    runningParamConsumer_Set(handles[0], "Device.MultiProvider.TestRunning", false);
-
-exit1:
-
-    printf("consumer: closing 5 handles\n");
-    for(i = 0; i < 5; ++i)
-    {
-        if(handles[i])
-        {
-            rc = rbus_close(handles[i]);
-            if(rc == RBUS_ERROR_SUCCESS)
-            {
-                printf("_test_:rbus_close result:SUCCESS component:%s\n", componentNames[i]);
-            }
-            else
-            {
-                printf("_test_:rbus_close result:FAIL component:%s rc:%d\n", componentNames[i], rc);
-            }
-        }
-    }
-
-    return rc;
+    return 0;
 }

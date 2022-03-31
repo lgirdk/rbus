@@ -27,43 +27,91 @@
 #include <string.h>
 #include <getopt.h>
 #include <rbus.h>
-#include "../common/runningParamHelper.h"
+#include <rtHashMap.h>
+#include <rtLog.h>
+#include "../common/test_macros.h"
 
-int subscribes[5] = {-1,-1,-1,-1,-1};
+#define REG_ELEMENTS 1
+#define PUB_EVENTS 1
+
+static int gNumProviders = 5;/*each provider will get its own thread*/
+static int gNumIterations = 1;/*for each iteration, any previous providers are destroyed and new providers created*/
+static int gIterationDuration = 60; /*seconds for each iteration*/
+static int gMaxProviderWait = 0; /*max time in usecs a provider thread sleeps before starting*/
+static int* gRunFlags = NULL;
+static int* gSubscribeFlags = NULL;
+static rtHashMap paramValues = NULL;
+
+int parseID(char const* name)
+{
+    char* pfirst;
+    char* pend;
+    char buff[64];
+    int i = 0;
+    pfirst = strstr(name, "Device.MultiProvider");
+    if(!pfirst)
+    {
+        printf("parseID failed %s\n", name);
+        return 0;
+    }
+    pfirst += strlen("Device.MultiProvider");
+    pend = pfirst;
+    while(*pend >= '0' && *pend <= '9')
+    {
+        buff[i++] = *pend;
+        pend++;
+    }
+    buff[i] = 0;
+    int id = atoi(buff);
+    printf("parseID %s=%d\n", name, id);
+    return id; 
+}
+
+int parseName(char const* name, char* hashName)
+{
+    char const* pend;
+    if(strncmp(name, "Device.MultiProvider", strlen("Device.MultiProvider")) != 0)
+    {
+        printf("parseName failed %s\n", name);
+        return -1;
+    }
+    pend = strchr(name + strlen("Device.MultiProvider"), '.');
+    strncpy(hashName, name, pend-name);
+    hashName[pend-name] = 0;
+    printf("parseName %s=%s\n", name, hashName);
+    return 0;
+}
 
 rbusError_t getHandler(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
 {
-    static int counter = 0;
-
     char const* name = rbusProperty_GetName(property);
+    char hashName[100];
 
     (void)handle;
     (void)opts;
 
-    if( strcmp(name, "Device.MultiProvider1.Param") == 0 ||
-        strcmp(name, "Device.MultiProvider2.Param") == 0 ||
-        strcmp(name, "Device.MultiProvider3.Param") == 0 ||
-        strcmp(name, "Device.MultiProvider4.Param") == 0 ||
-        strcmp(name, "Device.MultiProvider5.Param") == 0)
+    if(parseName(name, hashName))
     {
-        char sVal[256];
-        snprintf(sVal, 256, "param=%s counter=%d", name, ++counter);
-
-        rbusValue_t value;
-        rbusValue_Init(&value);
-        rbusValue_SetString(value, sVal);
-        rbusProperty_SetValue(property, value);
-        rbusValue_Release(value);
-
-        printf("_test_:getHandler result:SUCCESS value:'%s'\n", sVal);
-        return RBUS_ERROR_SUCCESS;
+        TEST_BOOL(0);
+        printf("parseName failed %s\n", name);
+        return RBUS_ERROR_INVALID_INPUT;
     }
-    else
+    
+    char* sVal = rtHashMap_Get(paramValues, hashName);
+    if(!sVal)
     {
-        printf("_test_:getHandler result:FAIL error:'unexpected param' param:'%s'\n", name);
+        TEST_BOOL(0);
+        printf("rtHashMap_Get failed %s\n", hashName);
+        return RBUS_ERROR_INVALID_INPUT;
     }
 
-    return RBUS_ERROR_BUS_ERROR;
+    rbusValue_t value;
+    rbusValue_Init(&value);
+    rbusValue_SetString(value, sVal);
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+    TEST_BOOL(1);
+    return RBUS_ERROR_SUCCESS;
 }
 
 rbusError_t setHandler(rbusHandle_t handle, rbusProperty_t property, rbusSetHandlerOptions_t* opts)
@@ -71,6 +119,7 @@ rbusError_t setHandler(rbusHandle_t handle, rbusProperty_t property, rbusSetHand
     char const* name;
     char* sVal;
     rbusValue_t value;
+    char hashName[100];
 
     (void)handle;
     (void)opts;
@@ -78,74 +127,164 @@ rbusError_t setHandler(rbusHandle_t handle, rbusProperty_t property, rbusSetHand
     name = rbusProperty_GetName(property);
     value = rbusProperty_GetValue(property);
 
-    if(value)
+    if(strstr(name, ".Run"))
     {
-        if( strcmp(name, "Device.MultiProvider1.Param") == 0 ||
-            strcmp(name, "Device.MultiProvider2.Param") == 0 ||
-            strcmp(name, "Device.MultiProvider3.Param") == 0 ||
-            strcmp(name, "Device.MultiProvider4.Param") == 0 ||
-            strcmp(name, "Device.MultiProvider5.Param") == 0)
+        int id = parseID(name);
+        if(!id)
         {
-            if(rbusValue_GetType(value) == RBUS_STRING)
-            {
-                sVal=rbusValue_ToString(value, 0,0);
-                printf("_test_:setHandler result:SUCCESS param='%s' value='%s'\n", name, sVal);
-                free(sVal);
-                return RBUS_ERROR_SUCCESS;
-            }
-            else
-            {
-                printf("_test_:setHandler result:FAIL error:'unexpected type %d'\n", rbusValue_GetType(value));
-            }
+            TEST_BOOL(0);
+            printf("parseID failed %s\n", name);
+            return RBUS_ERROR_INVALID_INPUT;
+        }
+        else if(rbusValue_GetType(value) == RBUS_BOOLEAN)
+        {
+            gRunFlags[id-1] = rbusValue_GetBoolean(value);
+            TEST_BOOL(1);
+            return RBUS_ERROR_SUCCESS;
         }
         else
         {
-            printf("_test_:getHandler result:FAIL error:'no param matched' name='%s'\n", name);
+            TEST_BOOL(0);
+            printf("value type not boolean %s\n", name);
+            return RBUS_ERROR_INVALID_INPUT;
         }
     }
     else
     {
-        printf("_test_:getHandler result:FAIL value=NULL name='%s'\n", name);
+        if(parseName(name, hashName))
+        {
+            TEST_BOOL(0);
+            printf("parseName failed %s\n", name);
+            return RBUS_ERROR_INVALID_INPUT;
+        }
+        else if(rbusValue_GetType(value) == RBUS_STRING)
+        {
+            TEST_BOOL(1);
+            sVal=rbusValue_ToString(value, 0,0);
+            rtHashMap_Set(paramValues, hashName, sVal);
+            return RBUS_ERROR_SUCCESS;
+        }
+        else
+        {
+            TEST_BOOL(0);
+            printf("value type not string %s\n", name);
+            return RBUS_ERROR_INVALID_INPUT;
+        }
     }
-
-    return RBUS_ERROR_BUS_ERROR;
 }
 
-rbusError_t eventSubHandler(rbusHandle_t handle, rbusEventSubAction_t action, const char* eventName, rbusFilter_t filter, int32_t interval, bool* autoPublish)
+rbusError_t eventSubHandler(rbusHandle_t handle, rbusEventSubAction_t action, char const* eventName, rbusFilter_t filter, int32_t interval, bool* autoPublish)
 {
     (void)handle;
     (void)filter;
     (void)interval;
     (void)autoPublish;
 
-    if(strcmp(eventName, "Device.MultiProvider1.Event!") == 0)
-    {   
-        subscribes[0] = action;
-    }
+    int id = parseID(eventName);
+    if(!id)
+        return RBUS_ERROR_INVALID_INPUT;
+    if(action == RBUS_EVENT_ACTION_SUBSCRIBE)
+        gSubscribeFlags[id - 1]++;
     else
-    if(strcmp(eventName, "Device.MultiProvider2.Event!") == 0)
-    {
-        subscribes[1] = action;
-    }
-    else
-    if(strcmp(eventName, "Device.MultiProvider3.Event!") == 0)
-    {
-        subscribes[2] = action;
-    }
-    else
-    if(strcmp(eventName, "Device.MultiProvider4.Event!") == 0)
-    {
-        subscribes[3] = action;
-    }
-    else
-    if(strcmp(eventName, "Device.MultiProvider5.Event!") == 0)
-    {
-        subscribes[4] = action;
-    }
-
-    printf("_test_:eventSubHandler event=%s action=%s\n", eventName, action == RBUS_EVENT_ACTION_SUBSCRIBE ? "subscribe" : "unsubscribe");
-
+        gSubscribeFlags[id - 1]--;
+    TEST_BOOL(1);
     return RBUS_ERROR_SUCCESS;
+}
+
+void* run_provider(void* p)
+{
+    int rc;
+    int id;
+    (void)p;
+    rbusHandle_t handle;
+    char componentName[64];
+    char elemName[3][64];
+    char hashName[64];
+    char defaultValue[64];
+    rbusDataElement_t dataElements[3] = {
+        {elemName[0], RBUS_ELEMENT_TYPE_PROPERTY, {getHandler,setHandler,NULL,NULL,NULL,NULL}},
+        {elemName[1], RBUS_ELEMENT_TYPE_PROPERTY, {getHandler,setHandler,NULL,NULL,NULL,NULL}},
+        {elemName[2], RBUS_ELEMENT_TYPE_EVENT, {NULL,NULL,NULL,NULL,eventSubHandler,NULL}}
+    };
+    int usecWait = 0;
+    static int sLastIndex = 0;
+
+    id = ++sLastIndex;
+
+    if(gMaxProviderWait > 0)
+    {
+        usecWait = rand() % gMaxProviderWait;
+        usleep(usecWait);
+    }
+
+    sprintf(componentName, "MultiProvider%d", id);
+    sprintf(dataElements[0].name, "Device.MultiProvider%d.Run", id);
+    sprintf(dataElements[1].name, "Device.MultiProvider%d.Param", id);
+    sprintf(dataElements[2].name, "Device.MultiProvider%d.Event!", id);
+
+    sprintf(hashName, "Device.MultiProvider%d", id);
+    sprintf(defaultValue, "Default Value %d", id);
+    rtHashMap_Set(paramValues, hashName, strdup(defaultValue));
+
+    TEST_EXEC_RC(rbus_open(&handle, componentName), rc)
+    if(rc)
+    {printf("What\n\n");    
+        return NULL;
+    }
+
+#if REG_ELEMENTS
+    TEST_EXEC_RC(rbus_regDataElements(handle, 3, dataElements), rc)
+    if(rc)
+    {
+        rbus_close(handle);
+        return NULL;
+    }
+
+    printf("provider %s: waiting\n", componentName);
+    time_t start = time(NULL);
+    while(!gRunFlags[id-1] && time(NULL) - start < gIterationDuration)
+    {
+        usleep(10);
+    }
+    printf("provider %s: running\n", componentName);
+
+#if PUB_EVENTS
+    int eventCount = 0;
+    while(gRunFlags[id-1] && time(NULL) - start < gIterationDuration)
+    {
+        char buffer[200];
+        eventCount++;
+        sleep(1);
+        if(gSubscribeFlags[id-1] > 0 && eventCount <= 3)
+        {
+            sprintf(buffer, "MultiProvider%d %d", id, eventCount);
+            rbusObject_t data;
+            rbusObject_Init(&data, NULL);
+            rbusObject_SetPropertyString(data, "value", buffer);
+            rbusEvent_t event = {0};
+            event.name = dataElements[2].name;
+            event.data = data;
+            event.type = RBUS_EVENT_GENERAL;
+            TEST_EXEC(rbusEvent_Publish(handle, &event));
+            rbusObject_Release(data);
+        }
+    }
+#else
+    sleep(gIterationDuration);
+#endif
+#else
+    sleep(gIterationDuration);
+#endif
+
+    if(handle)
+    {
+#ifdef REG_ELEMENTS        
+        TEST_EXEC(rbus_unregDataElements(handle, 3, dataElements))
+#endif
+        TEST_EXEC(rbus_close(handle))
+    }
+
+    return 0;
 }
 
 int main(int argc, char *argv[])
@@ -153,169 +292,96 @@ int main(int argc, char *argv[])
     (void)(argc);
     (void)(argv);
 
-    rbusHandle_t handles[5] = {NULL};
+    pthread_t* threads = NULL;
+    int i,j;
+    srand(time(NULL));
 
-    /*create 5 components which act as provider for 1 param and 1 event each*/
-    char* componentNames[] = {
-        "MultiProvider1",
-        "MultiProvider2",
-        "MultiProvider3",
-        "MultiProvider4",
-        "MultiProvider5"
-    };
-
-    rbusDataElement_t dataElements[5][2] = {
-        {
-            {"Device.MultiProvider1.Param", RBUS_ELEMENT_TYPE_PROPERTY, {getHandler,setHandler,NULL,NULL,NULL,NULL}},
-            {"Device.MultiProvider1.Event!", RBUS_ELEMENT_TYPE_EVENT, {NULL,NULL,NULL,NULL,eventSubHandler,NULL}}
-        },
-        {
-            {"Device.MultiProvider2.Param", RBUS_ELEMENT_TYPE_PROPERTY, {getHandler,setHandler,NULL,NULL,NULL,NULL}},
-            {"Device.MultiProvider2.Event!", RBUS_ELEMENT_TYPE_EVENT, {NULL,NULL,NULL,NULL,eventSubHandler,NULL}}
-        },
-        {
-            {"Device.MultiProvider3.Param", RBUS_ELEMENT_TYPE_PROPERTY, {getHandler,setHandler,NULL,NULL,NULL,NULL}},
-            {"Device.MultiProvider3.Event!", RBUS_ELEMENT_TYPE_EVENT, {NULL,NULL,NULL,NULL,eventSubHandler,NULL}}
-        },
-        {
-            {"Device.MultiProvider4.Param", RBUS_ELEMENT_TYPE_PROPERTY, {getHandler,setHandler,NULL,NULL,NULL,NULL}},
-            {"Device.MultiProvider4.Event!", RBUS_ELEMENT_TYPE_EVENT, {NULL,NULL,NULL,NULL,eventSubHandler,NULL}}
-        },
-        {
-            {"Device.MultiProvider5.Param", RBUS_ELEMENT_TYPE_PROPERTY, {getHandler,setHandler,NULL,NULL,NULL,NULL}},
-            {"Device.MultiProvider5.Event!", RBUS_ELEMENT_TYPE_EVENT, {NULL,NULL,NULL,NULL,eventSubHandler,NULL}}
-        }
-    };
-
-    int rc = RBUS_ERROR_SUCCESS;
-    int i;
-    int eventCount = 0;
-
-    printf("provider: opening 5 handles\n");
-
-    for(i = 0; i < 5; ++i)
+    while (1)
     {
-        rc = rbus_open(&handles[i], componentNames[i]);
-        printf("provider: rbus_open %s=%d\n", componentNames[i], rc);
-        if(rc == RBUS_ERROR_SUCCESS)
-        {
-            printf("_test_:rbus_open result:SUCCESS component:%s\n", componentNames[i]);
-        }
-        else
-        {
-            printf("_test_:rbus_open result:FAIL component:%s rc:%d\n", componentNames[i], rc);
-            handles[i] = NULL;
-            if(i == 0)
-            {
-                printf("provider: failed to open 1st handle\n");
-                return 1;
-            }
-            else
-            {
-                continue;
-            }
-        }
+        int option_index = 0;
+        int c;
 
-        rc = rbus_regDataElements(handles[i], 2, dataElements[i]);
-        printf("provider: rbus_regDataElements %s=%d\n", componentNames[i], rc);
-        if(rc == RBUS_ERROR_SUCCESS)
+        static struct option long_options[] = 
         {
-            printf("_test_:rbus_regDataElements result:SUCCESS component:%s\n", componentNames[i]);
-        }
-        else
+            {"providers",       required_argument,  0, 'p' },
+            {"iterations",      required_argument,  0, 'i' },
+            {"duration",        required_argument,  0, 'd' },
+            {"wait",            required_argument,  0, 'w' },
+            {"log",             required_argument,  0, 'l' },
+            {"help",            no_argument,        0, 'h' },
+            {0, 0, 0, 0}
+        };
+
+        c = getopt_long(argc, argv, "p:i:d:w:l:h", long_options, &option_index);
+        if (c == -1)
+            break;
+
+        switch (c)
         {
-            printf("_test_:rbus_regDataElements result:FAIL component:%s rc:%d\n", componentNames[i], rc);
+        case 'p':
+            gNumProviders = atoi(optarg);
+            break;
+        case 'i':
+            gNumIterations = atoi(optarg);
+            break;
+        case 'd':
+            gIterationDuration = atoi(optarg);
+            break;
+        case 'w':
+            gMaxProviderWait = atoi(optarg);
+            break;
+        case 'l':
+            rtLog_SetLevel(rtLogLevelFromString(optarg));
+            break;
+        case 'h':
+        default:
+            printf("rbusTestMultiProvider help:\n");
+            printf("-p --providers: provider count per iteration\n");
+            printf("-i --iterations: number of iterations\n");
+            printf("-d --duration: duration of each iteration\n");
+            printf("-w --wait: wait time each thread will take before running\n");
+            printf("-l --log: log level (debug, info, warn, error, fatal)\n");
+            exit(0);
+            break;
         }
     }
 
-    if(runningParamProvider_Init(handles[0], "Device.MultiProvider.TestRunning") != RBUS_ERROR_SUCCESS)
-    {
-        printf("provider: failed to register running param\n");
-        goto exit1;
-    }
-    printf("provider: waiting for consumer to start\n");
-    while (!runningParamProvider_IsRunning())
-    {
-        usleep(10000);
-    }
+    printf("provider=%d, iterations=%d, iteration duration=%d seconds, max provider wait=%d usecs\n", 
+        gNumProviders, gNumIterations, gIterationDuration, gMaxProviderWait);
 
-    printf("provider: running\n");
-    while (runningParamProvider_IsRunning())
-    {
-        char buffer[64];
-        eventCount++;
-        sleep(1);
 
-        printf("provider: publishing events for 5 handles\n");
-        for(i = 0; i < 5; ++i)
+    gRunFlags = calloc(1, gNumProviders * sizeof(int));
+    gSubscribeFlags = calloc(1, gNumProviders * sizeof(int));
+    
+
+    rtHashMap_CreateEx(&paramValues, 0, NULL, NULL, NULL, NULL, NULL, rtHashMap_Destroy_Func_Free);
+
+    for(j = 0; j < gNumIterations; ++j)
+    {
+        printf("starting iteration %d of %d with %d provider threads\n", j+1, gNumIterations, gNumProviders);
+
+        threads = malloc(gNumProviders * sizeof(pthread_t));
+
+        for(i = 0; i < gNumProviders; ++i)
+            pthread_create(&threads[i], NULL, run_provider, NULL);
+
+        for(i = 0; i < gIterationDuration; ++i)
         {
-            if(handles[i])
-            {
-                snprintf(buffer, 64, "from=%s count=%d", componentNames[i], eventCount);
-
-                rbusValue_t value;
-                rbusObject_t data;
-
-                rbusValue_Init(&value);
-                rbusValue_SetString(value, buffer);
-
-                rbusObject_Init(&data, NULL);
-                rbusObject_SetValue(data, "value", value);
-
-                rbusEvent_t event = {0};
-                event.name = dataElements[i][1].name;
-                event.data = data;
-                event.type = RBUS_EVENT_GENERAL;
-
-                rc = rbusEvent_Publish(handles[i], &event);
-
-                rbusValue_Release(value);
-                rbusObject_Release(data);
-                
-                printf("provider: rbusEvent_Publish %s=%d\n", dataElements[i][1].name, rc);
-                if(rc == RBUS_ERROR_SUCCESS)
-                {
-                    printf("_test_:rbusEvent_Publish result:SUCCESS event:%s\n", dataElements[i][1].name);
-                }
-                else
-                {
-                    printf("_test_:rbusEvent_Publish result:FAIL event:%s rc=%d\n", dataElements[i][1].name, rc);
-                }
-            }
+            printf("iteration %d of %d with %d of %d seconds remaining for this iteration\n", j+1, gNumIterations, i+1, gIterationDuration);
+            sleep(1);
         }
+
+        for(i = 0; i < gNumProviders; ++i)
+            pthread_join(threads[i], NULL);
+
+        free(threads);
     }
 
-exit1:
+    free(gRunFlags);
+    free(gSubscribeFlags);
+    rtHashMap_Destroy(paramValues);
 
-    printf("provider: closing 5 handles\n");
+    PRINT_TEST_RESULTS_EXPECTED("rbusTestMultiProvider", gNumProviders * 17);
 
-    for(i = 0; i < 5; ++i)
-    {
-        if(handles[i])
-        {
-            rc = rbus_unregDataElements(handles[i], 2, dataElements[i]);
-            printf("provider: rbusEventProvider_Unregister %s=%d\n", componentNames[i], rc);
-            if(rc == RBUS_ERROR_SUCCESS)
-            {
-                printf("_test_:rbusEventProvider_Unregister result:SUCCESS component:%s\n", componentNames[i]);
-            }
-            else
-            {
-                printf("_test_:rbusEventProvider_Unregister result:FAIL component:%s rc:%d\n", componentNames[i], rc);
-            }
-
-            rc = rbus_close(handles[i]);
-            printf("provider: rbus_close %s=%d\n", componentNames[i], rc);
-            if(rc == RBUS_ERROR_SUCCESS)
-            {
-                printf("_test_:rbus_close result:SUCCESS component:%s\n", componentNames[i]);
-            }
-            else
-            {
-                printf("_test_:rbus_close result:FAIL component:%s rc:%d\n", componentNames[i], rc);
-            }
-        }
-    }
-
-    return rc;
+    return 0;
 }

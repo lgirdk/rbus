@@ -37,7 +37,7 @@
 #include "rbus_handle.h"
 #include <stdlib.h>
 #include <stdio.h>
-#include <memory.h>
+#include <string.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <assert.h>
@@ -375,6 +375,7 @@ void rbusValueChange_CloseHandle(rbusHandle_t handle)
     }
 
     //remove all params for this bus handle
+    LOCK();//############ LOCK ############
     size_t i = 0;
     while(i < rtVector_Size(gVC->params))
     {
@@ -397,8 +398,13 @@ void rbusValueChange_CloseHandle(rbusHandle_t handle)
         if(gVC->running)
         {
             gVC->running = 0;
+            UNLOCK();//############ UNLOCK ############
             ERROR_CHECK(pthread_cond_signal(&gVC->cond));
             ERROR_CHECK(pthread_join(gVC->thread, NULL));
+        }
+        else
+        {
+            UNLOCK();//############ UNLOCK ############
         }
         ERROR_CHECK(pthread_mutex_destroy(&gVC->mutex));
         ERROR_CHECK(pthread_cond_destroy(&gVC->cond));
@@ -406,6 +412,10 @@ void rbusValueChange_CloseHandle(rbusHandle_t handle)
         gVC->params = NULL;
         free(gVC);
         gVC = NULL;
+    }
+    else
+    {
+        UNLOCK();//############ UNLOCK ############
     }
 }
 
