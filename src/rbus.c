@@ -4314,16 +4314,10 @@ rbusError_t rbusMethod_InvokeInternal(
     rbusMessage_GetInt32(response, &returnCode);
     legacyRetCode = (rbusLegacyReturn_t)returnCode;
 
-    if(returnCode == RBUS_ERROR_SUCCESS || (legacyRetCode == RBUS_LEGACY_ERR_SUCCESS))
+    rbusObject_initFromMessage(outParams, response);
+    if(legacyRetCode > RBUS_LEGACY_ERR_SUCCESS)
     {
-        rbusObject_initFromMessage(outParams, response);
-    }
-    else
-    {
-        if(legacyRetCode > RBUS_LEGACY_ERR_SUCCESS)
-        {
-            returnCode = CCSPError_to_rbusError(legacyRetCode);
-        }
+        returnCode = CCSPError_to_rbusError(legacyRetCode);
     }
 
     rbusMessage_Release(response);
