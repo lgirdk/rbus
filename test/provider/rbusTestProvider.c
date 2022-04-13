@@ -919,6 +919,7 @@ typedef struct MethodData
 {
     rbusMethodAsyncHandle_t asyncHandle;
     rbusObject_t inParams;
+    int err_value;
 }MethodData;
 
 static void* asyncMethodFunc(void *p)
@@ -939,7 +940,14 @@ static void* asyncMethodFunc(void *p)
     rbusObject_Init(&outParams, NULL);
 
     rbusValue_Init(&value);
-    rbusValue_SetString(value, "MethodAsync2()");
+    if(data->err_value == 0)
+    {
+        rbusValue_SetString(value, "MethodAsync2()");
+    }
+    else
+    {
+        rbusValue_SetString(value, "MethodAsync3()");
+    }
     rbusObject_SetValue(outParams, "name", value);
     rbusValue_Release(value);
 
@@ -952,7 +960,14 @@ static void* asyncMethodFunc(void *p)
     rbusValue_Release(value);
     
     printf("%s sending response\n", __FUNCTION__);
-    err = rbusMethod_SendAsyncResponse(data->asyncHandle, RBUS_ERROR_SUCCESS, outParams);
+    if(data->err_value == 0)
+    {
+	err = rbusMethod_SendAsyncResponse(data->asyncHandle, RBUS_ERROR_SUCCESS, outParams);
+    }
+    else
+    {
+	err = rbusMethod_SendAsyncResponse(data->asyncHandle, RBUS_ERROR_INVALID_INPUT, outParams);
+    }
     if(err != RBUS_ERROR_SUCCESS)
     {
         printf("%s rbusMethod_SendAsyncResponse failed err:%d\n", __FUNCTION__, err);
@@ -1010,12 +1025,20 @@ static rbusError_t methodHandler(rbusHandle_t handle, char const* methodName, rb
         return RBUS_ERROR_SUCCESS;
     }
     else
-    if(strstr(methodName, "MethodAsync2()"))
+    if(strstr(methodName, "MethodAsync2()") || strstr(methodName, "MethodAsync3()"))
     {
         pthread_t pid;
         MethodData* data = rt_malloc(sizeof(MethodData));
         data->asyncHandle = asyncHandle;
         data->inParams = inParams;
+	if(strstr(methodName, "MethodAsync2()"))
+	{
+	    data->err_value = 0;
+	}
+	else
+	{
+	    data->err_value = 1;
+	}
         rbusObject_Retain(inParams);
         if(pthread_create(&pid, NULL, asyncMethodFunc, data) || pthread_detach(pid))
         {
@@ -1429,6 +1452,7 @@ int main(int argc, char *argv[])
         {"Device.%s.Table1.{i}.Table2.{i}.Method2()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}},
         {"Device.%s.MethodAsync1()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}},
         {"Device.%s.Table1.{i}.MethodAsync2()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}},
+        {"Device.%s.MethodAsync3()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}},
         /*Device.%s.PartialPath1 will have row instances added via rbusTable_registerRow*/
         {"Device.%s.PartialPath1.{i}.", RBUS_ELEMENT_TYPE_TABLE, {NULL, NULL, ppTableAddRowHandler, ppTableRemRowHandler, NULL, NULL}},
         {"Device.%s.PartialPath1.{i}.Param1", RBUS_ELEMENT_TYPE_PROPERTY, {ppParamGetHandler, NULL, NULL, NULL, NULL, NULL}},

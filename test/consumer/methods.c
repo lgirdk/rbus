@@ -92,6 +92,20 @@ static void asyncMethodHandler2(
     }
 }
 
+static void asyncMethodHandler3(
+    rbusHandle_t handle,
+    char const* methodName,
+    rbusError_t error,
+    rbusObject_t params)
+{
+    (void)handle;
+
+    printf("asyncMethodHandler3 called: method=%s  error=%d\n", methodName, error);
+
+    asyncCount++;
+
+    testOutParams(params, "MethodAsync3()");
+}
 
 void testMethods(rbusHandle_t handle, int* countPass, int* countFail)
 {
@@ -219,6 +233,18 @@ void testMethods(rbusHandle_t handle, int* countPass, int* countFail)
     sleep(5);
     TEST(asyncCount == 1);
 
+    /*
+     * Call method Device.TestProvider.Table1.MethodAsync3() once
+     */
+    printf("\n##########################################\n# TEST rbusMethod_InvokeAsync(%s, 0) \n#\n", "Device.TestProvider.MethodAsync3()");
+    asyncCount = 0;
+    asyncError = RBUS_ERROR_SUCCESS;
+    err = rbusMethod_InvokeAsync(handle, "Device.TestProvider.MethodAsync3()", inParams, asyncMethodHandler3, 0);
+    printf("consumer: rbusMethod_InvokeAsync(%s) %s\n", "Device.TestProvider.MethodAsync3()",
+        err == RBUS_ERROR_SUCCESS ? "success" : "fail");
+    TEST(err == RBUS_ERROR_SUCCESS);
+    sleep(5);
+    TEST(asyncCount == 1);
 
     /*
      * Call method Device.TestProvider.Table1.MethodAsync2() 5 times in parallel
