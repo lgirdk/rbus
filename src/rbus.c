@@ -208,7 +208,7 @@ static rbusError_t CCSPError_to_rbusError(rtError e)
   return err;
 }
 
-static void rbusEventSubscription_free(void* p)
+void rbusEventSubscription_free(void* p)
 {
     rbusEventSubscription_t* sub = (rbusEventSubscription_t*)p;
     free((void*)sub->eventName);

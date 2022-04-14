@@ -26,6 +26,7 @@
 /*defined in rbus.c*/
 void _subscribe_async_callback_handler(rbusHandle_t handle, rbusEventSubscription_t* subscription, rbusError_t error);
 int _event_callback_handler(char const* objectName, char const* eventName, rbusMessage message, void* userData);
+void rbusEventSubscription_free(void* p);
 
 typedef struct AsyncSubscribeRetrier_t
 {
@@ -52,6 +53,8 @@ static void rbusAsyncSubscribeRetrier_FreeSubscription(void *pitem)
     AsyncSubscription_t* sub = (AsyncSubscription_t*)pitem;
     if(!sub)
         return;
+    if(sub->subscription)
+        rbusEventSubscription_free(sub->subscription);
     rbusMessage_Release(sub->payload);
     free(pitem);
 }
@@ -229,6 +232,8 @@ static void rbusAsyncSubscribeRetrier_SendSubscriptionRequests()
                 }
 
                 _subscribe_async_callback_handler(item->subscription->handle, item->subscription, responseErr);
+
+                item->subscription = NULL;/*ownership no longer ours*/
 
                 //store the next item, because we are removing this li item from list
                 rtListItem_GetNext(li, &tmp); 
