@@ -1394,7 +1394,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    #define numDataElems 55
+    #define numDataElems 56
 
     rbusDataElement_t dataElement[numDataElems] = {
         {"Device.%s.Event1!", RBUS_ELEMENT_TYPE_EVENT, {NULL,NULL,NULL,NULL, eventSubHandler, NULL}},
