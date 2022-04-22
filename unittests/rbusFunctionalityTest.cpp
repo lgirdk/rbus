@@ -35,6 +35,11 @@ static void exec_func_test(rbusGtest_t test)
       runtime = 5;
       break;
     }
+    case RBUS_GTEST_METHOD_ASYNC1:
+    {
+      runtime=5;
+      break;
+    }
     case RBUS_GTEST_FILTER2:
     case RBUS_GTEST_ASYNC_SUB4:
     {
@@ -47,10 +52,10 @@ static void exec_func_test(rbusGtest_t test)
       break;
     }
   }
-  usleep(25000);
   pid_t pid = fork();
   if (0 == pid) {
     int ret = 0;
+    usleep(50000);
     ret = rbusConsumer(test, 0, runtime);
     exit(ret);
   } else {
@@ -445,6 +450,11 @@ TEST(rbusApiMethod, test2)
 TEST(rbusApiMethodAsync, test)
 {
   exec_func_test(RBUS_GTEST_METHOD_ASYNC);
+}
+
+TEST(rbusApiMethodAsync_1, test)
+{
+  exec_func_test(RBUS_GTEST_METHOD_ASYNC1);
 }
 
 TEST(rbusApiValueChangeTest, test1)

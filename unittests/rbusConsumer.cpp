@@ -35,6 +35,16 @@ static char gtest_err[64];
 
 static bool asyncCalled = false;
 
+void testOutParams(rbusObject_t outParams, char const* name, rbusError_t error)
+{
+    rbusValue_t val = rbusObject_GetValue(outParams, "name");
+
+    printf("--STDOUT OutParams---\n");
+    rbusObject_fwrite(outParams, 1, stdout);
+
+    EXPECT_EQ(error, RBUS_ERROR_INVALID_INPUT);
+}
+
 static int exec_rbus_get_test(rbusHandle_t handle, const char *param)
 {
   int rc = RBUS_ERROR_BUS_ERROR;
@@ -206,6 +216,20 @@ static void asyncMethodHandler(
   printf("%s called: method=%s  error=%d\n",__func__, methodName, error);
 
   asyncCalled = true;
+
+}
+
+static void asyncMethodHandler1(
+    rbusHandle_t handle,
+    char const* methodName,
+    rbusError_t error,
+    rbusObject_t params)
+{
+    (void)handle;
+
+    printf("asyncMethodHandler2 called: method=%s  error=%d\n", methodName, error);
+
+    testOutParams(params, "MethodAsync_2()",error);
 
 }
 
@@ -832,6 +856,26 @@ int rbusConsumer(rbusGtest_t test, pid_t pid, int runtime)
         printf("consumer: rbusMethod_InvokeAsync(%s) %s\n", "Device.rbusProvider.MethodAsync1()",
             rc == RBUS_ERROR_SUCCESS ? "success" : "fail");
         sleep(runtime);
+
+      }
+      break;
+    case RBUS_GTEST_METHOD_ASYNC1:
+      {
+
+         rbusObject_t inParams;
+         rbusValue_t value;
+
+         rbusObject_Init(&inParams, NULL);
+         rbusValue_Init(&value);
+         rbusValue_SetString(value, "param1");
+         rbusObject_SetValue(inParams, "param1", value);
+         rbusValue_Release(value);
+
+         asyncCalled = false;
+         rc = rbusMethod_InvokeAsync(handle, "Device.rbusProvider.MethodAsync_2()", inParams, asyncMethodHandler1, 0);
+         printf("consumer: rbusMethod_InvokeAsync(%s) %s\n", "Device.rbusProvider.MethodAsync_2()",
+         rc == RBUS_ERROR_SUCCESS ? "success" : "fail");
+         sleep(runtime);
       }
       break;
     case RBUS_GTEST_REG_ROW:

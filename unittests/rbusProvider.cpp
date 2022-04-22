@@ -30,6 +30,13 @@
 #include <inttypes.h>
 
 void getCompileTime(struct tm *t);
+
+typedef struct MethodData
+{
+    rbusMethodAsyncHandle_t asyncHandle;
+    rbusObject_t inParams;
+}MethodData;
+
 typedef enum _rbus_legacy_support
 {
     RBUS_LEGACY_STRING = 0,    /**< Null terminated string                                           */
@@ -227,6 +234,54 @@ rbusError_t ppParamGetHandler(rbusHandle_t handle, rbusProperty_t property, rbus
   }
 }
 
+static void* asyncMethodFunc(void *p)
+{
+    MethodData* data;
+    rbusObject_t outParams;
+    rbusValue_t value;
+    rbusError_t err;
+    char buff[256];
+    char* str;
+
+    printf("%s enter\n", __FUNCTION__);
+
+    sleep(3);
+
+    data = (MethodData*)p;
+
+    rbusObject_Init(&outParams, NULL);
+
+    rbusValue_Init(&value);
+    rbusValue_SetString(value, "MethodAsync_2()");
+
+    rbusObject_SetValue(outParams, "name", value);
+    rbusValue_Release(value);
+
+    rbusValue_Init(&value);
+    str = rbusValue_ToString(rbusObject_GetValue(data->inParams, "param1"), NULL, 0);
+    snprintf(buff, 255, "Async Method Response inParams=%s\n", str);
+    free(str);
+    rbusValue_SetString(value, buff);
+    rbusObject_SetValue(outParams, "value", value);
+    rbusValue_Release(value);
+
+    printf("%s sending response\n", __FUNCTION__);
+    err = rbusMethod_SendAsyncResponse(data->asyncHandle, RBUS_ERROR_INVALID_INPUT, outParams);
+    if(err != RBUS_ERROR_SUCCESS)
+    {
+        printf("%s rbusMethod_SendAsyncResponse failed err:%d\n", __FUNCTION__, err);
+    }
+
+    rbusObject_Release(data->inParams);
+    rbusObject_Release(outParams);
+
+    free(data);
+
+    printf("%s exit\n", __FUNCTION__);
+
+    return NULL;
+}
+
 static rbusError_t methodHandler(rbusHandle_t handle, char const* methodName, rbusObject_t inParams, rbusObject_t outParams, rbusMethodAsyncHandle_t asyncHandle)
 {
   (void)handle;
@@ -250,6 +305,21 @@ static rbusError_t methodHandler(rbusHandle_t handle, char const* methodName, rb
     rbusObject_SetValue(outParams, "name", value);
     rbusValue_Release(value);
     rc = RBUS_ERROR_SUCCESS;
+  }
+  if(strstr(methodName, "MethodAsync_2()"))
+  {
+     pthread_t pid;
+     MethodData* data = (MethodData*)malloc(sizeof(MethodData));
+     data->asyncHandle = asyncHandle;
+     data->inParams = inParams;
+
+     rbusObject_Retain(inParams);
+     if(pthread_create(&pid, NULL, asyncMethodFunc, data) || pthread_detach(pid))
+     {
+         printf("%s failed to spawn thread\n", __FUNCTION__);
+         return RBUS_ERROR_BUS_ERROR;
+     }
+     return RBUS_ERROR_ASYNC_RESPONSE;
   }
   printf("methodHandler %s\n",(RBUS_ERROR_SUCCESS == rc) ? "success": "fail");
   return rc;
@@ -280,7 +350,8 @@ int rbusProvider(rbusGtest_t test, pid_t pid, int *consumer_status)
     {(char *)"Device.rbusProvider.PartialPath.{i}.Param1", RBUS_ELEMENT_TYPE_PROPERTY, {ppParamGetHandler, setHandler, NULL, NULL, NULL, NULL}},
     {(char *)"Device.rbusProvider.PartialPath.{i}.Param2", RBUS_ELEMENT_TYPE_PROPERTY, {ppParamGetHandler, NULL, NULL, NULL, NULL, NULL}},
     {(char *)"Device.rbusProvider.Method()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}},
-    {(char *)"Device.rbusProvider.MethodAsync1()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}}
+    {(char *)"Device.rbusProvider.MethodAsync1()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}},
+    {(char *)"Device.rbusProvider.MethodAsync_2()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}}
   };
 #define elements_count sizeof(dataElements)/sizeof(dataElements[0])
 
