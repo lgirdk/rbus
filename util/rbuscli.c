@@ -56,6 +56,9 @@ typedef struct _tlv_t {
 rbus_cli_tlv_t g_tlvParams[RBUS_CLI_MAX_PARAM];
 rbusHandle_t   g_busHandle = 0;
 rtList g_registeredProps = NULL;
+rtList g_subsribeUserData = NULL;
+rtList g_messageUserData = NULL;
+
 bool g_isInteractive = false;
 bool g_logEvents = true;
 rbusLogLevel_t g_logLevel = RBUS_LOG_WARN;
@@ -265,6 +268,27 @@ void show_menu(const char* command)
             printf ("\tunsub Example.SomeStrProp = \"Hello\"\n\r");
             printf ("\n\r");
         }
+        else if(matchCmd(command, 4, "asubscribe"))
+        {
+            printf ("\e[1masub\e[0mscribe \e[4mevent\e[0m [\e[4moperator\e[0m \e[4mvalue\e[0m]\n\r");
+            printf ("Asynchronously subscribe to a single event.\n\r");
+            printf ("Rbus supports general events, value-change events, and table events.\n\r");
+            printf ("And the type depends on that type of element \e[4mevent\e[0m refers to.\n\r");
+            printf ("If the type is a parameter then it is value-change event.\n\r");
+            printf ("If the type is a table then it is table events.\n\r");
+            printf ("If the type is a event then it is a general event.\n\r");
+            printf ("For value-change, an optional filter can be applied using the \e[4moperator\e[0m \e[4mvalue\e[0m parameters.\n\r");
+            printf ("Args:\n\r");
+            printf ("\t%-20sThe name of the event to subscribe to\n\r", "event");
+            printf ("\t%-20sOptional filter relational operator. Supported operators (>, >=, <, <=, =, !=)\n\r", "operator");
+            printf ("\t%-20sOptional filter trigger value\n\r", "value");
+            printf ("Examples:\n\r");
+            printf ("\tasub Example.SomeEvent!\n\r");
+            printf ("\tasub Example.SomeTable.\n\r");
+            printf ("\tasub Example.SomeIntProp > 10\n\r");
+            printf ("\tasub Example.SomeStrProp = \"Hello\"\n\r");
+            printf ("\n\r");
+        }
         else if(matchCmd(command, 3, "publish"))
         {
             printf ("\e[1mpub\e[0mlish \e[4mevent\e[0m [\e[4mdata\e[0m]\n\r");
@@ -405,6 +429,7 @@ void show_menu(const char* command)
         printf ("\t\e[1munreg\e[0mister \e[4mname\e[0m\n\r");
         printf ("\t\e[1msub\e[0mscribe \e[4mevent\e[0m [\e[4moperator\e[0m \e[4mvalue\e[0m]\n\r");
         printf ("\t\e[1munsub\e[0mscribe \e[4mevent\e[0m [\e[4moperator\e[0m \e[4mvalue\e[0m]\n\r");
+        printf ("\t\e[1masub\e[0mscribe \e[4mevent\e[0m [\e[4moperator\e[0m \e[4mvalue\e[0m]\n\r");
         printf ("\t\e[1mpub\e[0mlish \e[4mevent\e[0m [\e[4mdata\e[0m]\n\r");
         printf ("\t\e[1maddl\e[0mistener \e[4mexpression\e[0m\n\r");
         printf ("\t\e[1mreml\e[0mistener \e[4mexpression\e[0m\n\r");
@@ -561,6 +586,13 @@ void free_registered_property(void* p)
     runSteps = __LINE__;
     rbusProperty_t prop = (rbusProperty_t)p;
     rbusProperty_Release(prop);
+    runSteps = __LINE__;
+}
+
+void free_userdata(void* p)
+{
+    runSteps = __LINE__;
+    rt_free(p);
     runSteps = __LINE__;
 }
 
@@ -732,8 +764,16 @@ void event_receive_handler(rbusHandle_t handle, rbusEvent_t const* event, rbusEv
         printf("Event data:\n\r");
         rbusObject_fwrite(event->data, 2, stdout); 
         printf("\n\r");
-        printf("User data: %s\n\r", (const char*)subscription->userData);
+        if (subscription->userData)
+            printf("User data: %s\n\r", (const char*)subscription->userData);
     }
+}
+
+void event_receive_subscription_handler(rbusHandle_t handle, rbusEventSubscription_t* subscription, rbusError_t error)
+{
+  (void)handle;
+  if (subscription)
+      printf ("event name (%s) subscribe %s\n", subscription->eventName, error == RBUS_ERROR_SUCCESS ? "success" : "failed");
 }
 
 void message_receive_handler(rbusHandle_t handle, rbusMessage_t* msg, void * userData)
@@ -745,7 +785,8 @@ void message_receive_handler(rbusHandle_t handle, rbusMessage_t* msg, void * use
     {
         printf("Message received on topic %s\n\r",  msg->topic);
         printf("Message data: %.*s\n\r", msg->length, (char const *)msg->data);
-        printf("User data: %s\n\r", (const char*)userData);
+        if (userData)
+            printf("User data: %s\n\r", (const char*)userData);
     }
 }
 
@@ -1628,7 +1669,7 @@ void set_filter_value(const char* arg, rbusValue_t value)
     rbusValue_SetString(value, arg);
 }
 
-void validate_and_execute_subscribe_cmd (int argc, char *argv[], bool add)
+void validate_and_execute_subscribe_cmd (int argc, char *argv[], bool add, bool isAsync)
 {
     rbusError_t rc = RBUS_ERROR_SUCCESS;
     rbusFilter_t filter = NULL;
@@ -1652,9 +1693,12 @@ void validate_and_execute_subscribe_cmd (int argc, char *argv[], bool add)
     if (!verify_rbus_open())
         return;    
 
-    if(add)
+    if(!g_subsribeUserData)
+       rtList_Create(&g_subsribeUserData);
+
+    if(1)
     {
-        userData = rt_calloc(1, 256);//fixme - never gets freed
+        userData = rt_calloc(1, 256);
         strcat(userData, "sub ");
         strcat(userData, argv[2]);
     }
@@ -1676,10 +1720,11 @@ void validate_and_execute_subscribe_cmd (int argc, char *argv[], bool add)
         else
         {
             printf ("Invalid arguments. Please see the help\n\r");
+            rt_free(userData);
             return;
         }
 
-        if(add)
+        if(1)
         {
             strcat(userData, " ");
             strcat(userData, argv[3]);
@@ -1697,7 +1742,12 @@ void validate_and_execute_subscribe_cmd (int argc, char *argv[], bool add)
     runSteps = __LINE__;
     rbusEventSubscription_t subscription = {argv[2], filter, 0, 0, event_receive_handler, userData, NULL, NULL};
 
-    if(add)
+    /* Async will be TRUE only when add is TRUE */
+    if (isAsync && add)
+    {
+        rc = rbusEvent_SubscribeExAsync(g_busHandle, &subscription, 1, event_receive_subscription_handler, 0);
+    }
+    else if(add)
     {
         rc = rbusEvent_SubscribeEx(g_busHandle, &subscription, 1, 0);
     }
@@ -1714,6 +1764,35 @@ void validate_and_execute_subscribe_cmd (int argc, char *argv[], bool add)
     if(rc != RBUS_ERROR_SUCCESS)
     {
         printf("Invalid Subscription err:%d\n\r", rc);
+        rt_free (userData);
+    }
+    else
+    {
+        /* Retain the userData for the interactive mode of rbuscli */
+        if(add)
+        {
+            rtList_PushBack(g_subsribeUserData, userData, NULL);
+        }
+        else
+        {
+            /* Remove the userData from the list that are maintained for */
+            rtListItem li;
+            rtList_GetFront(g_subsribeUserData, &li);
+            runSteps = __LINE__;
+            while(li)
+            {
+                char* prtUserData = NULL;
+                rtListItem_GetData(li, (void**)&prtUserData);
+                if(strcmp(prtUserData, userData) == 0)
+                {
+                    rtList_RemoveItem(g_subsribeUserData, li, free_userdata);
+                    break;
+                }
+                rtListItem_GetNext(li, &li);
+            }
+
+            rt_free(userData);
+        }
     }
 }
 
@@ -1757,6 +1836,7 @@ void validate_and_execute_publish_command(int argc, char *argv[])
 void validate_and_execute_listen_command(int argc, char *argv[], bool add)
 {
     rbusError_t rc;
+    char* userData = NULL;
     
     if (argc < 2)
     {
@@ -1768,10 +1848,14 @@ void validate_and_execute_listen_command(int argc, char *argv[], bool add)
         return;    
 
     runSteps = __LINE__;
+    if(!g_messageUserData)
+       rtList_Create(&g_messageUserData);
+
+    userData = rt_calloc(1, 256);
+    sprintf(userData, "listen %s", argv[2]);
+
     if(add)
     {
-        char* userData = rt_calloc(1, 256);//fixme - never gets freed
-        sprintf(userData, "listen %s", argv[2]);
         rc = rbusMessage_AddListener(g_busHandle, argv[2], message_receive_handler, userData);
     }
     else
@@ -1782,6 +1866,34 @@ void validate_and_execute_listen_command(int argc, char *argv[], bool add)
     if(rc != RBUS_ERROR_SUCCESS)
     {
         printf("%sListener failed err: %d\n\r", add ? "Add" : "Remove", rc);
+        rt_free(userData);
+    }
+    else
+    {
+        if(add)
+        {
+            rtList_PushBack(g_messageUserData, userData, NULL);
+        }
+        else
+        {
+            /* Remove the userData from the list that are maintained for */
+            rtListItem li;
+            rtList_GetFront(g_messageUserData, &li);
+            runSteps = __LINE__;
+            while(li)
+            {
+                char* prtUserData = NULL;
+                rtListItem_GetData(li, (void**)&prtUserData);
+                if(strcmp(prtUserData, userData) == 0)
+                {
+                    rtList_RemoveItem(g_messageUserData, li, free_userdata);
+                    break;
+                }
+                rtListItem_GetNext(li, &li);
+            }
+
+            rt_free(userData);
+        }
     }
 }
 
@@ -2020,11 +2132,15 @@ int handle_cmds (int argc, char *argv[])
     }
     else if(matchCmd(command, 3, "subscribe"))
     {
-        validate_and_execute_subscribe_cmd (argc, argv, true);
+        validate_and_execute_subscribe_cmd (argc, argv, true, false);
     }
     else if(matchCmd(command, 5, "unsubscribe"))
     {
-        validate_and_execute_subscribe_cmd (argc, argv, false);
+        validate_and_execute_subscribe_cmd (argc, argv, false, false);
+    }
+    else if(matchCmd(command, 4, "asubscribe"))
+    {
+        validate_and_execute_subscribe_cmd (argc, argv, true, true);
     }
     else if(matchCmd(command, 3, "publish"))
     {
@@ -2223,7 +2339,7 @@ void completion(const char *buf, linenoiseCompletions *lc) {
     {
         runSteps = __LINE__;
         completion = find_completion(tokens[0], 14, "get", "set", "add", "del", "getr", "getn", "disca", "discc", "disce",
-                "discw", "sub", "unsub", "method_no", "method_na", "method_va", "reg", "unreg", "pub",
+                "discw", "sub", "unsub", "asub", "method_no", "method_na", "method_va", "reg", "unreg", "pub",
                 "addl", "reml", "send", "log", "quit", "help");
     }
     else if(num == 2)
@@ -2347,6 +2463,10 @@ char *hints(const char *buf, int *color, int *bold) {
             hint = " event [operator value]";
         }
         else if(strcmp(tokens[0], "unsub") == 0)
+        {
+            hint = " event [operator value]";
+        }
+        else if(strcmp(tokens[0], "asub") == 0)
         {
             hint = " event [operator value]";
         }
@@ -2597,6 +2717,18 @@ int main( int argc, char *argv[] )
     {
         runSteps = __LINE__;
         rtList_Destroy(g_registeredProps, free_registered_property);
+    }
+
+    if (g_subsribeUserData)
+    {
+        runSteps = __LINE__;
+        rtList_Destroy(g_subsribeUserData, free_userdata);
+    }
+
+    if (g_messageUserData)
+    {
+        runSteps = __LINE__;
+        rtList_Destroy(g_messageUserData, free_userdata);
     }
 
     return 0;
