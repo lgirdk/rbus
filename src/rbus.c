@@ -4142,7 +4142,7 @@ rbusError_t rbusEvent_UnsubscribeEx(
             }
             else
             {
-                RBUSLOG_INFO("%s: %s no existing subscription found", __FUNCTION__, sub->eventName);
+                RBUSLOG_INFO("%s: %s no existing subscription found", __FUNCTION__, subscription[i].eventName);
                 errorcode = RBUS_ERROR_INVALID_OPERATION; //TODO - is the the right error to return
             }
         }
