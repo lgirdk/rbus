@@ -277,7 +277,6 @@ static void rbusSubscriptions_onElementCreated(rbusSubscriptions_t subscriptions
                     {
                         rtList_PushBack(sub->instances, child, NULL);
                         addElementSubscription(child, sub, false);
-                        break;
                     }
                     rtListItem_GetNext(item, &item);
                 }
@@ -651,6 +650,52 @@ static void rbusSubscriptions_saveCache(rbusSubscriptions_t subscriptions)
     fclose(file);
 }
 
+/*this is basicially a strcmp with the addition that it will ignore any wildcard (e.g. "*") in the event name
+  if there's a corresponding table row tag (e.g. "{i}") in the element name */
+static int _compareEventNameToElemName(char const* event, char const* elem)
+{
+    const char* p1 = event;
+    const char* p2 = elem;
+    for(;;)
+    {
+        if(*p1)
+        {
+            if(*p2)
+            {
+                if(*p1 == *p2)
+                {
+                    p1++;
+                    p2++;
+                }
+                else
+                {
+                    if(*p1 == '*')
+                    {
+                        if(strncmp(p2, "{i}", 3) == 0)
+                        {
+                            p1++;
+                            p2+=3;
+                        }
+                        else
+                            return 1;
+                    }
+                    else
+                        return 1;
+                }
+            }
+            else
+                return 1;
+        }
+        else
+        {
+            if(*p2)
+                return 1;
+            else
+                return 0;
+        }
+    }
+}
+
 void rbusSubscriptions_resubscribeCache(rbusHandle_t handle, rbusSubscriptions_t subscriptions, char const* elementName, elementNode* el)
 {
     rtListItem item;
@@ -667,20 +712,21 @@ void rbusSubscriptions_resubscribeCache(rbusHandle_t handle, rbusSubscriptions_t
         rtListItem_GetData(item, (void**)&sub);
 
         VERIFY_NULL(sub);
+
         if(sub->element == NULL && sub->tokens == NULL &&/*not already subscribed*/
-          strcmp(sub->eventName, elementName) == 0)
+           _compareEventNameToElemName(sub->eventName, elementName) == 0)
         {
             rtListItem next;
             rbusError_t err;
             RBUSLOG_INFO("%s: subscribing %s %s", __FUNCTION__, sub->eventName, sub->listener);
             rtListItem_GetNext(item, &next);
+            rtList_RemoveItem(subscriptions->subList, item, NULL);/*remove before calling subscribeHandlerImpl to avoid dupes in cache file*/
             err = subscribeHandlerImpl(handle, true, el, sub->eventName, sub->listener, sub->componentId, sub->interval, sub->duration, sub->filter);
             /*TODO figure out what to do if we get an error resubscribing
-              It's conceivable that a provider might not like the sub due to some state change between this and the previous process run
-             */
-             (void)err;
-
-            rtList_RemoveItem(subscriptions->subList, item, subscriptionFree);
+            It's conceivable that a provider might not like the sub due to some state change between this and the previous process run
+            */
+            (void)err;
+            subscriptionFree(sub);
             item = next;
         }
         else
