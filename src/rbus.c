@@ -2163,13 +2163,6 @@ rbusError_t rbus_open(rbusHandle_t* handle, char const* componentName)
             RBUSLOG_ERROR("%s(%s): rbus_openBrokerConnection error %d", __FUNCTION__, componentName, err);
             goto exit_error1;
         }
-
-        err = rbus_registerClientDisconnectHandler(_client_disconnect_callback_handler);
-        if(err != RTMESSAGE_BUS_SUCCESS)
-        {
-            RBUSLOG_ERROR("%s(%s): rbus_registerClientDisconnectHandler error %d", __FUNCTION__, componentName, err);
-            goto exit_error2;
-        }
     }
 
     tmpHandle = rt_calloc(1, sizeof(struct _rbusHandle));
@@ -2342,8 +2335,10 @@ rbusError_t rbus_regDataElements(
     int numDataElements,
     rbusDataElement_t *elements)
 {
+    static bool sDisConnHandler = false;
     int i;
     rbusError_t rc = RBUS_ERROR_SUCCESS;
+    rbus_error_t err = RTMESSAGE_BUS_SUCCESS;
     struct _rbusHandle* handleInfo = (struct _rbusHandle*)handle;
 
     VERIFY_NULL(handleInfo);
@@ -2353,7 +2348,6 @@ rbusError_t rbus_regDataElements(
     for(i=0; i<numDataElements; ++i)
     {
         char* name = elements[i].name;
-        rbus_error_t err = RTMESSAGE_BUS_SUCCESS;
 
         if((!name) || (0 == strlen(name))) {
             rc = RBUS_ERROR_INVALID_INPUT;
@@ -2408,6 +2402,17 @@ rbusError_t rbus_regDataElements(
       Thus we unregisters elements 0 to i (i was when we broke from loop above).*/
     if(rc != RBUS_ERROR_SUCCESS && i > 0)
         rbus_unregDataElements(handle, i, elements);
+
+    if((rc == RBUS_ERROR_SUCCESS) && (!sDisConnHandler))
+    {
+        err = rbus_registerClientDisconnectHandler(_client_disconnect_callback_handler);
+        if(err != RTMESSAGE_BUS_SUCCESS)
+        {
+            RBUSLOG_ERROR("%s : rbus_registerClientDisconnectHandler error %d", __FUNCTION__, err);
+        }
+        else
+            sDisConnHandler = true;
+    }
 
     return rc;
 }
