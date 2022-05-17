@@ -320,9 +320,17 @@ rbusError_t setHandler1(rbusHandle_t handle, rbusProperty_t property, rbusSetHan
     }
     else if(propertyNameEquals(name, "Data"))
     {
-        strncpy(t1->data, rbusValue_GetString(value, NULL), MAX_LENGTH-1);
-        printDataModel();
-        return RBUS_ERROR_SUCCESS;
+        if(rbusValue_GetType(value) != RBUS_STRING)
+        {
+            printf("Invalid Input. Give string input\n");
+            return RBUS_ERROR_INVALID_INPUT;
+        }
+        else
+        {
+            strncpy(t1->data, rbusValue_GetString(value, NULL), MAX_LENGTH-1);
+            printDataModel();
+            return RBUS_ERROR_SUCCESS;
+        }
     }
     else
     {
