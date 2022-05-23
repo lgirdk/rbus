@@ -70,6 +70,7 @@ elementNode* instantiateTableRow(elementNode* tableNode, uint32_t instNum, char 
 void deleteTableRow(elementNode* rowNode);
 void getPropertyInstanceNames(elementNode* root, char const* query, rtVector propNameList);
 void setPropertyChangeComponent(elementNode* node, char const* componentName);
+void rbusElement_mutex_destroy(void);
 
 #ifdef __cplusplus
 }

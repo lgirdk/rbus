@@ -2290,6 +2290,8 @@ rbusError_t rbus_close(rbusHandle_t handle)
         handleInfo->elementRoot = NULL;
     }
 
+    rbusElement_mutex_destroy();
+
     if((err = rbus_unregisterObj(handleInfo->componentName)) != RTMESSAGE_BUS_SUCCESS)
     {
         RBUSLOG_ERROR("%s(%s): rbus_unregisterObj error %d", __FUNCTION__, handleInfo->componentName, err);

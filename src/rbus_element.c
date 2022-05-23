@@ -25,11 +25,25 @@
 #include "rbus_element.h"
 #include "rbus_subscriptions.h"
 #include <rtMemory.h>
+#include <pthread.h>
 
 #define VERIFY_NULL(T) if(NULL == T){ return; }
 #define DEBUG_ELEMENTS 0
 
+pthread_mutex_t element_mutex;
+#define ERROR_CHECK(CMD) \
+{ \
+  int err; \
+  if((err=CMD) != 0) \
+  { \
+    RBUSLOG_ERROR("Error %d:%s running command " #CMD, err, strerror(err)); \
+  } \
+}
+#define LOCK() ERROR_CHECK(pthread_mutex_lock(&element_mutex))
+#define UNLOCK() ERROR_CHECK(pthread_mutex_unlock(&element_mutex))
+
 elementNode* pruneNode = NULL;
+static int mutex_init = 0;
 
 //****************************** UTILITY FUNCTIONS ***************************//
 char const* getTypeString(rbusElementType_t type)
@@ -209,10 +223,21 @@ elementNode* insertElement(elementNode* root, rbusDataElement_t* elem)
     char* name = NULL;
     char* saveptr = NULL;
     elementNode* currentNode = root;
+    elementNode* tempNode = NULL;
     elementNode* nextNode = NULL;
     int ret = 0, createChild = 0;
     char buff[RBUS_MAX_NAME_LENGTH];
+    pthread_mutexattr_t attrib;
 
+    if(!mutex_init)
+    {
+       ERROR_CHECK(pthread_mutexattr_init(&attrib));
+       ERROR_CHECK(pthread_mutexattr_settype(&attrib, PTHREAD_MUTEX_ERRORCHECK));
+       ERROR_CHECK(pthread_mutex_init(&element_mutex, &attrib));
+       mutex_init = 1;
+    }
+
+    LOCK();
     if(currentNode == NULL || elem == NULL)
     {
         return NULL;
@@ -258,19 +283,20 @@ elementNode* insertElement(elementNode* root, rbusDataElement_t* elem)
             if(createChild)
             {
                 RBUSLOG_DEBUG("Create child [%s]", token);
-                currentNode->child = getEmptyElementNode();
-                currentNode->child->parent = currentNode;
+                tempNode = getEmptyElementNode();
+                tempNode->parent = currentNode;
                 if(currentNode == root)    
                 {
-                    currentNode->child->fullName = strdup(token);
+                    tempNode->fullName = strdup(token);
                 }
                 else
                 {
                     snprintf(buff, RBUS_MAX_NAME_LENGTH, "%s.%s", currentNode->fullName, token);
-                    currentNode->child->fullName = strdup(buff);
+                    tempNode->fullName = strdup(buff);
                 }
-                currentNode = currentNode->child;
-                currentNode->name = strdup(token);
+                tempNode->name = strdup(token);
+                currentNode->child = tempNode;
+                currentNode = tempNode;
                 nextNode = currentNode->child;
                 createChild = 1;
             }
@@ -293,16 +319,17 @@ elementNode* insertElement(elementNode* root, rbusDataElement_t* elem)
                 if(nextNode == NULL)
                 {
                     RBUSLOG_DEBUG("Create Sibling [%s]", token);
-                    currentNode->nextSibling = getEmptyElementNode();
-                    currentNode->nextSibling->parent = currentNode->parent;
+                    tempNode = getEmptyElementNode();
+                    tempNode->parent = currentNode->parent;
                     if(currentNode->parent->fullName)
                         snprintf(buff, RBUS_MAX_NAME_LENGTH, "%s.%s", currentNode->parent->fullName, token);
                     else
                         snprintf(buff, RBUS_MAX_NAME_LENGTH, "%s", token);
                     RBUSLOG_DEBUG("Full name [%s]", buff);
-                    currentNode->nextSibling->fullName = strdup(buff);
-                    currentNode = currentNode->nextSibling;
-                    currentNode->name = strdup(token);
+                    tempNode->fullName = strdup(buff);
+                    tempNode->name = strdup(token);
+                    currentNode->nextSibling = tempNode;
+                    currentNode = tempNode;
                     createChild = 1;
                 }
             }
@@ -324,13 +351,14 @@ elementNode* insertElement(elementNode* root, rbusDataElement_t* elem)
         {
             elementNode* rowTemplate = getEmptyElementNode();
             rowTemplate->parent = currentNode;
-            currentNode->child = rowTemplate;
             rowTemplate->name = strdup("{i}");
             snprintf(buff, RBUS_MAX_NAME_LENGTH, "%s.%s", currentNode->fullName, rowTemplate->name);
-            currentNode->child->fullName = strdup(buff);
+            rowTemplate->fullName = strdup(buff);
+            currentNode->child = rowTemplate;
         }
     }
     free(name);
+    UNLOCK();
 
     if(ret == 0)
     {
@@ -353,6 +381,7 @@ elementNode* retrieveElement(elementNode* root, const char* elmentName)
     elementNode* nextNode = NULL;
     int tokenFound = 0;
 
+    LOCK();
     RBUSLOG_DEBUG("<%s>: Request to retrieve element [%s]", __FUNCTION__, elmentName);
     if(currentNode == NULL)
     {
@@ -425,6 +454,7 @@ elementNode* retrieveElement(elementNode* root, const char* elmentName)
     }
 
     free(name);
+    UNLOCK();
 
     if(tokenFound)
     {
@@ -448,6 +478,7 @@ elementNode* retrieveInstanceElement(elementNode* root, const char* elmentName)
     bool isWildcard = false;
 
     RBUSLOG_DEBUG("<%s>: Request to retrieve element [%s]", __FUNCTION__, elmentName);
+    LOCK();
     if(currentNode == NULL)
     {
         return NULL;
@@ -539,6 +570,7 @@ elementNode* retrieveInstanceElement(elementNode* root, const char* elmentName)
     }
 
     free(name);
+    UNLOCK();
 
     if(tokenFound)
     {
@@ -656,6 +688,7 @@ void removeElement(elementNode* element)
     int numChain = 0;
     VERIFY_NULL(element);
     RBUSLOG_DEBUG("removeElement %s\n", element->fullName);
+    LOCK();
     createElementChain(element, &chain, &numChain);
     if(numChain > 1)
         removeElementInternal(chain[0], &chain[1], numChain-1);
@@ -663,6 +696,7 @@ void removeElement(elementNode* element)
         freeElementNode(chain[0]);
     free(chain);
     pruneTree();    
+    UNLOCK();
 }
 
 static void printElement(elementNode* node, int level)
@@ -930,6 +964,7 @@ elementNode* instantiateTableRow(elementNode* tableNode, uint32_t instNum, char 
     if(!tableNode)
         return NULL;
 
+    LOCK();
 #if DEBUG_ELEMENTS
     RBUSLOG_INFO("%s: table=%s instNum=%u alias=%s", __FUNCTION__, tableNode->fullName, instNum, alias);
     printElement(tableNode, 0);
@@ -982,7 +1017,7 @@ elementNode* instantiateTableRow(elementNode* tableNode, uint32_t instNum, char 
         RBUSLOG_INFO("#########################################################");
     }
 #endif
-
+    UNLOCK();
 
     return row;
 }
@@ -990,6 +1025,7 @@ elementNode* instantiateTableRow(elementNode* tableNode, uint32_t instNum, char 
 void deleteTableRow(elementNode* rowNode)
 {
     VERIFY_NULL(rowNode);
+    LOCK();
     elementNode* parent = rowNode->parent;
     
     if(!parent)
@@ -1021,6 +1057,7 @@ void deleteTableRow(elementNode* rowNode)
         RBUSLOG_INFO("#####################################################");
     }
 #endif
+    UNLOCK();
 }
 
 void replicateAcrossTableRowInstancesInternal(elementNode* rowNode, elementNode* chain[], int numChain)
@@ -1092,6 +1129,7 @@ void replicateAcrossTableRowInstances(elementNode* newNode)
     int numChain = 0;
     int i = 0;
 
+    LOCK();
     createElementChain(newNode, &chain, &numChain);
 
     for(i = 0; i < numChain; ++i)
@@ -1117,6 +1155,7 @@ void replicateAcrossTableRowInstances(elementNode* newNode)
         }
     }
     free(chain);
+    UNLOCK();
 }
 
 void setPropertyChangeComponent(elementNode* node, char const* componentName)
@@ -1128,4 +1167,9 @@ void setPropertyChangeComponent(elementNode* node, char const* componentName)
         node->changeComp = strdup(componentName);
     rtTime_Now(&node->changeTime);
 
+}
+
+void rbusElement_mutex_destroy(void)
+{
+    ERROR_CHECK(pthread_mutex_destroy(&element_mutex));
 }
