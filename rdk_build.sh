@@ -64,24 +64,14 @@ elif [ "$XCAM_MODEL" == "SERXW3" ] || [ "$XCAM_MODEL" == "SERICAM2" ] || [ "$XCA
 elif [ "$XCAM_MODEL" == "XHC3" ]; then
     echo "Setting environmental variables and Pre rule makefile for XHC3"
     source ${RDK_PROJECT_ROOT_PATH}/build/components/sdk/setenv2
-    RDK_PATCHES=$RDK_PROJECT_ROOT_PATH/build/components/opensource/patch
-    if [ ! -f $RDK_PATCHES/.rbus.patched ]; then
-        echo "applying patch for XHC3 rbus"
-        cd ${RDK_PROJECT_ROOT_PATH}/rbus
-        git apply $RDK_PATCHES/rbus.diff
-        touch $RDK_PATCHES/.rbus.patched
-        cd -
-    else
-        echo "Patch already applied so going ahead with the build"
-    fi
 else #No Matching platform
         echo "Source environment that include packages for your platform. The environment variables PROJ_PRERULE_MAK_FILE should refer to the platform s PreRule make"
 fi
 
 #export COMP_BASE_PATH=${RDK_SCRIPTS_PATH%/*}
 export COMP_BASE_PATH=${RDK_SCRIPTS_PATH}/../
-export SEARCH_PATH=$COMP_BASE_PATH/opensource
-export INSTALL_PATH=$COMP_BASE_PATH/sdk/fsroot/ramdisk/usr
+export SEARCH_PATH="$RDK_FSROOT_PATH/usr;$RDK_FSROOT_PATH/usr/local"
+export INSTALL_PATH=$RDK_FSROOT_PATH/usr
 
 #The cross compile tools are exported already in XHB1;lets avoid only that (Because SOURCETOOLCHAIN is not exported in XHB1)
 if [ "$XCAM_MODEL" != "XHB1" ]; then
@@ -130,11 +120,6 @@ done
 
 ARGS=$@
 
-
-# component-specific vars
-export FSROOT=${RDK_FSROOT_PATH}
-
-
 # functional modules
 export CFLAGS=" -Wno-format-truncation "
 function configure()
@@ -144,7 +129,7 @@ function configure()
     mkdir -p ${RDK_PROJECT_ROOT_PATH}/rbus/build
     cd ${RDK_PROJECT_ROOT_PATH}/rbus/build
 
-    cmake  -DCMAKE_INSTALL_PREFIX=${INSTALL_PATH} -DCMAKE_PREFIX_PATH=${SEARCH_PATH} -DENABLE_RDKLOGGER=ON ..
+    cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_PATH} -DCMAKE_PREFIX_PATH=${SEARCH_PATH} -DENABLE_RDKLOGGER=ON -DCMAKE_EXE_LINKER_FLAGS="-Wl,-rpath-link,${RDK_FSROOT_PATH}/usr/lib" ..
 }
 
 function clean()
