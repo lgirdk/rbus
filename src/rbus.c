@@ -2171,13 +2171,13 @@ rbusError_t rbus_open(rbusHandle_t* handle, char const* componentName)
     {
         /*This will fail if the same name was previously registered (by another rbus_open or ccsp msg bus init)*/
         RBUSLOG_ERROR("%s(%s): rbus_registerObj error %d", __FUNCTION__, componentName, err);
-        goto exit_error3;
+        goto exit_error2;
     }
 
     if((err = rbus_registerSubscribeHandler(componentName, _event_subscribe_callback_handler, tmpHandle)) != RTMESSAGE_BUS_SUCCESS)
     {
         RBUSLOG_ERROR("%s(%s): rbus_registerSubscribeHandler error %d", __FUNCTION__, componentName, err);
-        goto exit_error4;
+        goto exit_error3;
     }
 
     tmpHandle->componentName = strdup(componentName);
@@ -2196,18 +2196,16 @@ rbusError_t rbus_open(rbusHandle_t* handle, char const* componentName)
 
     return RBUS_ERROR_SUCCESS;
 
-exit_error4:
+exit_error3:
 
     if((err = rbus_unregisterObj(componentName)) != RTMESSAGE_BUS_SUCCESS)
         RBUSLOG_ERROR("%s(%s): rbus_unregisterObj error %d", __FUNCTION__, componentName, err);
 
-exit_error3:
+exit_error2:
 
     if(rbus_getConnection() && rbusHandleList_IsEmpty())
         if((err = rbus_unregisterClientDisconnectHandler()) != RTMESSAGE_BUS_SUCCESS)
             RBUSLOG_ERROR("%s(%s): rbus_unregisterClientDisconnectHandler error %d", __FUNCTION__, componentName, err);
-
-exit_error2:
 
     if(rbus_getConnection() && rbusHandleList_IsEmpty())
         if((err = rbus_closeBrokerConnection()) != RTMESSAGE_BUS_SUCCESS)
