@@ -2094,6 +2094,7 @@ static void _rbus_open_pre_initialize(bool retain)
     else if(!retain && sRetained)
     {
         rbusConfig_Destroy();
+        rbusElement_mutex_destroy();
         sRetained = false;
     }
 }
@@ -2287,8 +2288,6 @@ rbusError_t rbus_close(rbusHandle_t handle)
         freeElementNode(handleInfo->elementRoot);
         handleInfo->elementRoot = NULL;
     }
-
-    rbusElement_mutex_destroy();
 
     if((err = rbus_unregisterObj(handleInfo->componentName)) != RTMESSAGE_BUS_SUCCESS)
     {

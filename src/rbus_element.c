@@ -30,7 +30,6 @@
 #define VERIFY_NULL(T) if(NULL == T){ return; }
 #define DEBUG_ELEMENTS 0
 
-pthread_mutex_t element_mutex;
 #define ERROR_CHECK(CMD) \
 { \
   int err; \
@@ -43,6 +42,7 @@ pthread_mutex_t element_mutex;
 #define UNLOCK() ERROR_CHECK(pthread_mutex_unlock(&element_mutex))
 
 elementNode* pruneNode = NULL;
+pthread_mutex_t element_mutex;
 static int mutex_init = 0;
 
 //****************************** UTILITY FUNCTIONS ***************************//
@@ -1171,5 +1171,9 @@ void setPropertyChangeComponent(elementNode* node, char const* componentName)
 
 void rbusElement_mutex_destroy(void)
 {
-    ERROR_CHECK(pthread_mutex_destroy(&element_mutex));
+    if(mutex_init)
+    {
+      ERROR_CHECK(pthread_mutex_destroy(&element_mutex));
+      mutex_init = 0;
+    }
 }
