@@ -63,7 +63,7 @@ install (TARGETS rbus_gtest.bin
     RUNTIME DESTINATION bin)
 
 if (ENABLE_CODE_COVERAGE)
-    install(CODE "execute_process(COMMAND find src/ unittests/ -name *.gcno -exec tar -rvf rbus_src_gcno.tar {} \;)")
+    install(CODE "execute_process(COMMAND find . -name *.gcno -exec tar -rvf rbus_src_gcno.tar {} \;)")
     install(FILES ${CMAKE_BINARY_DIR}/rbus_src_gcno.tar DESTINATION bin)
 endif()
 
