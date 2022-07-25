@@ -232,80 +232,84 @@ static rbusEventSubscription_t* rbusEventSubscription_find(rtVector eventSubs, c
     return NULL;
 }
 
-static void _parse_rbusData_to_value (char const* pBuff, rbusLegacyDataType_t legacyType, rbusValue_t value)
+static bool _parse_rbusData_to_value (char const* pBuff, rbusLegacyDataType_t legacyType, rbusValue_t value)
 {
+    bool rc = false;
     if (pBuff && value)
     {
         switch (legacyType)
         {
             case RBUS_LEGACY_STRING:
             {
-                rbusValue_SetFromString(value, RBUS_STRING, pBuff);
+                rc = rbusValue_SetFromString(value, RBUS_STRING, pBuff);
                 break;
             }
             case RBUS_LEGACY_INT:
             {
-                rbusValue_SetFromString(value, RBUS_INT32, pBuff);
+                rc = rbusValue_SetFromString(value, RBUS_INT32, pBuff);
                 break;
             }
             case RBUS_LEGACY_UNSIGNEDINT:
             {
-                rbusValue_SetFromString(value, RBUS_UINT32, pBuff);
+                rc = rbusValue_SetFromString(value, RBUS_UINT32, pBuff);
                 break;
             }
             case RBUS_LEGACY_BOOLEAN:
             {
-                rbusValue_SetFromString(value, RBUS_BOOLEAN, pBuff);
+                rc = rbusValue_SetFromString(value, RBUS_BOOLEAN, pBuff);
                 break;
             }
             case RBUS_LEGACY_LONG:
             {
-                rbusValue_SetFromString(value, RBUS_INT64, pBuff);
+                rc = rbusValue_SetFromString(value, RBUS_INT64, pBuff);
                 break;
             }
             case RBUS_LEGACY_UNSIGNEDLONG:
             {
-                rbusValue_SetFromString(value, RBUS_UINT64, pBuff);
+                rc = rbusValue_SetFromString(value, RBUS_UINT64, pBuff);
                 break;
             }
             case RBUS_LEGACY_FLOAT:
             {
-                rbusValue_SetFromString(value, RBUS_SINGLE, pBuff);
+                rc = rbusValue_SetFromString(value, RBUS_SINGLE, pBuff);
                 break;
             }
             case RBUS_LEGACY_DOUBLE:
             {
-                rbusValue_SetFromString(value, RBUS_DOUBLE, pBuff);
+                 rc = rbusValue_SetFromString(value, RBUS_DOUBLE, pBuff);
                 break;
             }
             case RBUS_LEGACY_BYTE:
             {
                 rbusValue_SetBytes(value, (uint8_t*)pBuff, strlen(pBuff));
+                rc = true;
                 break;
             }
             case RBUS_LEGACY_DATETIME:
             {
-                rbusValue_SetFromString(value, RBUS_DATETIME, pBuff);
+                rc = rbusValue_SetFromString(value, RBUS_DATETIME, pBuff);
                 break;
             }
             case RBUS_LEGACY_BASE64:
             {
                 RBUSLOG_WARN("RBUS_LEGACY_BASE64_TYPE: Base64 type was never used in CCSP so far. So, Rbus did not support it till now. Since this is the first Base64 query, please report to get it fixed.");
                 rbusValue_SetString(value, pBuff);
+                rc = true;
                 break;
             }
             default:
                 break;
         }
     }
+    return rc;
 }
 
 //*************************** SERIALIZE/DERIALIZE FUNCTIONS ***************************//
 #define DEBUG_SERIALIZER 0
 
-void rbusValue_initFromMessage(rbusValue_t* value, rbusMessage msg);
+rbusError_t rbusValue_initFromMessage(rbusValue_t* value, rbusMessage msg);
 void rbusValue_appendToMessage(char const* name, rbusValue_t value, rbusMessage msg);
-void rbusProperty_initFromMessage(rbusProperty_t* property, rbusMessage msg);
+rbusError_t rbusProperty_initFromMessage(rbusProperty_t* property, rbusMessage msg);
 void rbusPropertyList_initFromMessage(rbusProperty_t* prop, rbusMessage msg);
 void rbusPropertyList_appendToMessage(rbusProperty_t prop, rbusMessage msg);
 void rbusObject_initFromMessage(rbusObject_t* obj, rbusMessage msg);
@@ -315,9 +319,10 @@ void rbusEventData_appendToMessage(rbusEvent_t* event, rbusFilter_t filter, int3
 void rbusFilter_AppendToMessage(rbusFilter_t filter, rbusMessage msg);
 void rbusFilter_InitFromMessage(rbusFilter_t* filter, rbusMessage msg);
 
-void rbusValue_initFromMessage(rbusValue_t* value, rbusMessage msg)
+rbusError_t rbusValue_initFromMessage(rbusValue_t* value, rbusMessage msg)
 {
     uint8_t const* data;
+    bool rc = true;
     uint32_t length;
     int type;
     char const* pBuffer = NULL;
@@ -332,7 +337,12 @@ void rbusValue_initFromMessage(rbusValue_t* value, rbusMessage msg)
     {
         rbusMessage_GetString(msg, &pBuffer);
         RBUSLOG_DEBUG("Received Param Value in string : [%s]", pBuffer);
-        _parse_rbusData_to_value (pBuffer, type, *value);
+        rc = _parse_rbusData_to_value (pBuffer, type, *value);
+        if(!rc)
+        {
+            RBUSLOG_WARN("%s: RBUS_INVALID_INPUT", __FUNCTION__);
+            return RBUS_ERROR_INVALID_INPUT;
+        }
     }
     else
     {
@@ -413,21 +423,24 @@ void rbusValue_initFromMessage(rbusValue_t* value, rbusMessage msg)
 #endif
         }
     }
+    return RBUS_ERROR_SUCCESS;
 }
 
-void rbusProperty_initFromMessage(rbusProperty_t* property, rbusMessage msg)
+rbusError_t rbusProperty_initFromMessage(rbusProperty_t* property, rbusMessage msg)
 {
     char const* name;
     rbusValue_t value;
+    rbusError_t err = RBUS_ERROR_SUCCESS;
 
     rbusMessage_GetString(msg, (char const**) &name);
 #if DEBUG_SERIALIZER
     RBUSLOG_INFO("> prop pop name=%s", name);
 #endif
     rbusProperty_Init(property, name, NULL);
-    rbusValue_initFromMessage(&value, msg);
+    err= rbusValue_initFromMessage(&value, msg);
     rbusProperty_SetValue(*property, value);
     rbusValue_Release(value);
+    return err;
 }
 
 void rbusPropertyList_appendToMessage(rbusProperty_t prop, rbusMessage msg)
@@ -1228,9 +1241,10 @@ static void _set_callback_handler (rbusHandle_t handle, rbusMessage request, rbu
         {
             for (loopCnt = 0; loopCnt < numVals; loopCnt++)
             {
-                rbusProperty_initFromMessage(&pProperties[loopCnt], request);
+                rc = rbusProperty_initFromMessage(&pProperties[loopCnt], request);
             }
-
+            if(rc != RBUS_ERROR_SUCCESS)
+                goto exit;
             rbusMessage_GetString(request, (char const**) &pIsCommit);
 
             /* Since we set as string, this needs to compared with string..
@@ -1296,6 +1310,7 @@ static void _set_callback_handler (rbusHandle_t handle, rbusMessage request, rbu
         pFailedElement = pCompName;
     }
 
+exit:
     rbusMessage_Init(response);
     rbusMessage_SetInt32(*response, (int) rc);
     if (pFailedElement)
