@@ -298,6 +298,23 @@ static rbusError_t methodHandler(rbusHandle_t handle, char const* methodName, rb
     rbusObject_SetValue(outParams, "name", value);
     rbusValue_Release(value);
     rc = RBUS_ERROR_SUCCESS;
+  } else if(strstr(methodName, "Method11()")) {
+    rc = RBUS_ERROR_INVALID_OPERATION;
+  } else if(strstr(methodName, "Method123()")) {
+    rbusValue_t value1, value2;
+    rbusValue_Init(&value1);
+    rbusValue_Init(&value2);
+    rbusValue_Init(&value);
+    rbusValue_SetString(value, "Method123()");
+    rbusObject_SetValue(outParams, "name", value);
+    rbusValue_Release(value);
+    rbusValue_SetInt32(value1, RBUS_ERROR_INVALID_OPERATION);
+    rbusValue_SetString(value2, "RBUS_ERROR_INVALID_OPERATION");
+    rbusObject_SetValue(outParams, "error_code", value1);
+    rbusObject_SetValue(outParams, "error_string", value2);
+    rbusValue_Release(value1);
+    rbusValue_Release(value2);
+    rc = RBUS_ERROR_INVALID_OPERATION;
   } else if(strstr(methodName, "MethodAsync1()")) {
     sleep(4);
     rbusValue_Init(&value);
@@ -350,6 +367,8 @@ int rbusProvider(rbusGtest_t test, pid_t pid, int *consumer_status)
     {(char *)"Device.rbusProvider.PartialPath.{i}.Param1", RBUS_ELEMENT_TYPE_PROPERTY, {ppParamGetHandler, setHandler, NULL, NULL, NULL, NULL}},
     {(char *)"Device.rbusProvider.PartialPath.{i}.Param2", RBUS_ELEMENT_TYPE_PROPERTY, {ppParamGetHandler, NULL, NULL, NULL, NULL, NULL}},
     {(char *)"Device.rbusProvider.Method()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}},
+    {(char *)"Device.rbusProvider.Method11()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}},
+    {(char *)"Device.rbusProvider.Method123()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}},
     {(char *)"Device.rbusProvider.MethodAsync1()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}},
     {(char *)"Device.rbusProvider.MethodAsync_2()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}}
   };

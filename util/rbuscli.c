@@ -1940,7 +1940,16 @@ static void execute_method_cmd(char *cmd, char *method, rbusObject_t inParams)
         rbusObject_Release(inParams);
     if(RBUS_ERROR_SUCCESS != rc)
     {
-        printf("%s failed for %s with err: '%s'\n\r",cmd, method,rbusError_ToString(rc));
+        if(outParams)
+        {
+            printf("%s failed for %s with err: '%s'\n\r",cmd, method,rbusError_ToString(rc));
+            rbusObject_fwrite(outParams, 1, stdout);
+            rbusObject_Release(outParams);
+        }
+        else
+        {
+            printf("Unexpected error in handling outparams\n");
+        }
         return;
     }
 
@@ -1965,7 +1974,8 @@ static void execute_method_cmd(char *cmd, char *method, rbusObject_t inParams)
         prop = rbusProperty_GetNext(prop);
     }
 
-    rbusObject_Release(outParams);
+    if(outParams)
+        rbusObject_Release(outParams);
 }
 
 void validate_and_execute_method_values_cmd (int argc, char *argv[])

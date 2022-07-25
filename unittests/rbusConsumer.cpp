@@ -840,6 +840,52 @@ int rbusConsumer(rbusGtest_t test, pid_t pid, int runtime)
         }
       }
       break;
+    case RBUS_GTEST_METHOD3:
+      {
+        rbusObject_t inParams = NULL, outParams = NULL;
+        rbusProperty_t prop = NULL;
+        const char *method = "Device.rbusProvider.Method123()";
+
+        isElementPresent(handle, method);
+        rbusObject_Init(&inParams, NULL);
+        rbusProperty_Init(&prop, "param_names", NULL) ;
+        rbusObject_SetProperty(inParams,prop);
+
+        rc = rbusMethod_Invoke(handle, method, inParams, &outParams);
+        rbusObject_Release(inParams);
+        EXPECT_NE(rc, RBUS_ERROR_SUCCESS);
+        rc=0;
+
+        if(outParams)
+        {
+          rbusObject_fwrite(outParams, 1, stdout);
+          rbusObject_Release(outParams);
+        }
+      }
+      break;
+    case RBUS_GTEST_METHOD4:
+      {
+        rbusObject_t inParams = NULL, outParams = NULL;
+        rbusProperty_t prop = NULL;
+        const char *method = "Device.rbusProvider.Method11()";
+
+        isElementPresent(handle, method);
+        rbusObject_Init(&inParams, NULL);
+        rbusProperty_Init(&prop, "param_names", NULL) ;
+        rbusObject_SetProperty(inParams,prop);
+
+        rc = rbusMethod_Invoke(handle, method, inParams, &outParams);
+        rbusObject_Release(inParams);
+        EXPECT_NE(rc, RBUS_ERROR_SUCCESS);
+        rc=0;
+
+        if(outParams)
+        {
+          rbusObject_fwrite(outParams, 1, stdout);
+          rbusObject_Release(outParams);
+        }
+      }
+      break;
     case RBUS_GTEST_METHOD_ASYNC:
       {
         rbusObject_t inParams;

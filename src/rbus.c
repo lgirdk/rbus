@@ -1984,6 +1984,10 @@ static int _method_callback_handler(rbusHandle_t handle, rbusMessage request, rb
     int sessionId;
     char const* methodName;
     rbusObject_t inParams, outParams;
+    rbusValue_t value1, value2;
+
+    rbusValue_Init(&value1);
+    rbusValue_Init(&value2);
 
     rbusMessage_GetInt32(request, &sessionId);
     rbusMessage_GetString(request, &methodName);
@@ -1991,6 +1995,7 @@ static int _method_callback_handler(rbusHandle_t handle, rbusMessage request, rb
 
     RBUSLOG_INFO("%s method [%s]", __FUNCTION__, methodName);
 
+    rbusObject_Init(&outParams, NULL);
     /*get the element for the row */
     elementNode* methRegElem = retrieveElement(handleInfo->elementRoot, methodName);
     elementNode* methInstElem = retrieveInstanceElement(handleInfo->elementRoot, methodName);
@@ -2000,8 +2005,6 @@ static int _method_callback_handler(rbusHandle_t handle, rbusMessage request, rb
         if(methRegElem->cbTable.methodHandler)
         {
             RBUSLOG_INFO("%s calling methodHandler method [%s]", __FUNCTION__, methodName);
-
-            rbusObject_Init(&outParams, NULL);
 
             rbusMethodAsyncHandle_t asyncHandle = rt_malloc(sizeof(struct _rbusMethodAsyncHandle));
             asyncHandle->hdr = *hdr;
@@ -2018,24 +2021,30 @@ static int _method_callback_handler(rbusHandle_t handle, rbusMessage request, rb
                 free(asyncHandle);
             }
 
-            if (result != RBUS_ERROR_SUCCESS)
-            {
-                rbusObject_Release(outParams);
-            }
         }
         else
         {
             RBUSLOG_INFO("%s methodHandler not registered method [%s]", __FUNCTION__, methodName);
             result = RBUS_ERROR_INVALID_OPERATION;
+            rbusValue_SetInt32(value1, RBUS_ERROR_INVALID_OPERATION);
+            rbusValue_SetString(value2, "RBUS_ERROR_INVALID_OPERATION");
+            rbusObject_SetValue(outParams, "error_code", value1);
+            rbusObject_SetValue(outParams, "error_string", value2);
         }
     }
     else
     {
         RBUSLOG_WARN("%s no element found method [%s]", __FUNCTION__, methodName);
         result = RBUS_ERROR_ELEMENT_DOES_NOT_EXIST;
+        rbusValue_SetInt32(value1, RBUS_ERROR_ELEMENT_DOES_NOT_EXIST);
+        rbusValue_SetString(value2, "RBUS_ERROR_ELEMENT_DOES_NOT_EXIST");
+        rbusObject_SetValue(outParams, "error_code", value1);
+        rbusObject_SetValue(outParams, "error_string", value2);
     }
 
     rbusObject_Release(inParams);
+    rbusValue_Release(value1);
+    rbusValue_Release(value2);
 
     if(result == RBUS_ERROR_ASYNC_RESPONSE)
     {
@@ -2045,11 +2054,8 @@ static int _method_callback_handler(rbusHandle_t handle, rbusMessage request, rb
     {
         rbusMessage_Init(response);
         rbusMessage_SetInt32(*response, result);
-        if (result == RBUS_ERROR_SUCCESS)
-        {
-            rbusObject_appendToMessage(outParams, *response);
-            rbusObject_Release(outParams);
-        }
+        rbusObject_appendToMessage(outParams, *response);
+        rbusObject_Release(outParams);
         return RTMESSAGE_BUS_SUCCESS; 
     }
 }
@@ -4502,12 +4508,25 @@ rbusError_t rbusMethod_SendAsyncResponse(
     rbusMessage response;
 
     VERIFY_NULL(asyncHandle);
+    rbusValue_t value1, value2;
+
+    rbusValue_Init(&value1);
+    rbusValue_Init(&value2);
 
     rbusMessage_Init(&response);
     rbusMessage_SetInt32(response, error);
-    if(outParams)
-        rbusObject_appendToMessage(outParams, response);
+    if ((error != RBUS_ERROR_SUCCESS) && (outParams == NULL))
+    {
+        rbusObject_Init(&outParams, NULL);
+        rbusValue_SetInt32(value1, error);
+        rbusValue_SetString(value2, rbusError_ToString(error));
+        rbusObject_SetValue(outParams, "error_code", value1);
+        rbusObject_SetValue(outParams, "error_string", value2);
+    }
+    rbusObject_appendToMessage(outParams, response);
     rbus_sendResponse(&asyncHandle->hdr, response);
+    rbusValue_Release(value1);
+    rbusValue_Release(value2);
     free(asyncHandle);
     return RBUS_ERROR_SUCCESS;
 }

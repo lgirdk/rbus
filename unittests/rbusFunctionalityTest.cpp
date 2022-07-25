@@ -447,6 +447,16 @@ TEST(rbusApiMethod, test2)
   exec_func_test(RBUS_GTEST_METHOD2);
 }
 
+TEST(rbusApiMethod, test3)
+{
+  exec_func_test(RBUS_GTEST_METHOD3);
+}
+
+TEST(rbusApiMethod, test4)
+{
+  exec_func_test(RBUS_GTEST_METHOD4);
+}
+
 TEST(rbusApiMethodAsync, test)
 {
   exec_func_test(RBUS_GTEST_METHOD_ASYNC);

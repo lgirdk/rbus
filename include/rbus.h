@@ -1512,9 +1512,16 @@ rbusError_t  rbusEvent_Publish(
  *  @param      handle      Bus Handle
  *  @param      methodName  Method name
  *  @param      inParams    Input params
- *  @param      outParams   Return params
+ *  @param      outParams   Return params and error response values
+ *                          outparams is generated and contains the return value of error rbusError_t
+                            On success, it contains method specific data on the outParams.
+                            On failure, it contains method specific error code and error description on the outParams.
+                            "error_code" & "error_string"
+                            provider is responsible in sending the errorcode and error string.
+                            other error like no method/handling issues, internal err
+                            will be taken care by rbus.
  *  @return RBus error code as defined by rbusError_t.
- *  Possible values are: RBUS_ERROR_INVALID_EVENT
+ *  Possible values are: RBUS_ERROR_SUCCESS, RBUS_ERROR_BUS_ERROR, RBUS_ERROR_INVALID_INPUT
  *  @ingroup Methods
  */
 rbusError_t rbusMethod_Invoke(

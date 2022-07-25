@@ -115,7 +115,9 @@ void testMethods(rbusHandle_t handle, int* countPass, int* countFail)
     char row1[RBUS_MAX_NAME_LENGTH];
     char row2[RBUS_MAX_NAME_LENGTH];
     char method1[RBUS_MAX_NAME_LENGTH];
+    char method11[RBUS_MAX_NAME_LENGTH];
     char method2[RBUS_MAX_NAME_LENGTH];
+    char method3[RBUS_MAX_NAME_LENGTH];
     rbusObject_t inParams;
     rbusObject_t outParams;
     rbusValue_t value;
@@ -141,6 +143,8 @@ void testMethods(rbusHandle_t handle, int* countPass, int* countFail)
 
     snprintf(row2, RBUS_MAX_NAME_LENGTH, "Device.TestProvider.Table1.%u.Table2.%u", instNum1, instNum2);
 
+    snprintf(method11, RBUS_MAX_NAME_LENGTH, "Device.TestProvider.Method11()");
+    snprintf(method3, RBUS_MAX_NAME_LENGTH, "Device.TestProvider.Method3()");
     snprintf(method1, RBUS_MAX_NAME_LENGTH, "Device.TestProvider.Table1.%u.Method1()", instNum1);
     snprintf(method2, RBUS_MAX_NAME_LENGTH, "Device.TestProvider.Table1.[method1].Table2.[method2].Method2()");
 
@@ -164,7 +168,37 @@ void testMethods(rbusHandle_t handle, int* countPass, int* countFail)
         testOutParams(outParams, "Method1()");
         rbusObject_Release(outParams);
     }
-    
+
+    /*
+     * Call method Device.TestProvider.Method11()
+     */
+    printf("\n##########################################\n# TEST rbusMethod_Invoke(%s) \n#\n", method11);
+    err = rbusMethod_Invoke(handle, method11, inParams, &outParams);
+    printf("consumer: rbusMethod_Invoke(%s) %s\n", method11,
+        err == RBUS_ERROR_SUCCESS ? "success" : "fail");
+    TEST(err != RBUS_ERROR_SUCCESS);
+    if(err != RBUS_ERROR_SUCCESS)
+    {
+        printf("Print outparams\n");
+        rbusObject_fwrite(outParams, 1, stdout);
+        rbusObject_Release(outParams);
+    }
+
+    /*
+     * Call method Device.TestProvider.Method3()
+     */
+    printf("\n##########################################\n# TEST rbusMethod_Invoke(%s) \n#\n", method3);
+    err = rbusMethod_Invoke(handle, method3, inParams, &outParams);
+    printf("consumer: rbusMethod_Invoke(%s) %s\n", method3,
+        err == RBUS_ERROR_SUCCESS ? "success" : "fail");
+    TEST(err != RBUS_ERROR_SUCCESS);
+    if(err != RBUS_ERROR_SUCCESS)
+    {
+        printf("Print outparams\n");
+        testOutParams(outParams, "Method3()");
+        rbusObject_Release(outParams);
+    }
+
     /*
      * Call method Device.TestProvider.Table1.[methods].Table2.[methods].Method2()
      */

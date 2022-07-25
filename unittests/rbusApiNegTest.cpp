@@ -901,7 +901,8 @@ TEST(rbusInvokeNegTest, test1)
     rbusObject_Init(&inParams, NULL);
     rc = rbusMethod_Invoke(handle, NULL, inParams, &outParams);
     EXPECT_EQ(rc, RBUS_ERROR_INVALID_INPUT);
-    rbusObject_Release(outParams);
+    if(outParams)
+        rbusObject_Release(outParams);
 
     rc=rbus_close(handle);
     EXPECT_EQ(rc, RBUS_ERROR_SUCCESS);
@@ -916,7 +917,27 @@ TEST(rbusInvokeNegTest, test2)
     rbusObject_Init(&inParams, NULL);
     rc = rbusMethod_Invoke(NULL, method, inParams, &outParams);
     EXPECT_EQ(rc, RBUS_ERROR_INVALID_INPUT);
-    rbusObject_Release(outParams);
+    if(outParams)
+        rbusObject_Release(outParams);
+}
+
+TEST(rbusInvokeNegTest, test3)
+{
+    int rc = RBUS_ERROR_BUS_ERROR;
+    rbusHandle_t handle = NULL;
+    rbusObject_t inParams = NULL, outParams = NULL;
+    const char *method = "Device.rbusProvider.Method123()";
+    const char *componentName = "rbusApi";
+    handle = (struct _rbusHandle *) malloc(sizeof(struct _rbusHandle));
+
+    rc=rbus_open(&handle,componentName);
+    EXPECT_EQ(rc, RBUS_ERROR_SUCCESS);
+
+    rbusObject_Init(&inParams, NULL);
+    rc = rbusMethod_Invoke(handle, method, inParams, &outParams);
+    EXPECT_EQ(rc, RBUS_ERROR_DESTINATION_NOT_REACHABLE);
+    if(outParams)
+        rbusObject_Release(outParams);
 }
 
 TEST(rbusInvokeAsyncNegTest, test1)
@@ -967,7 +988,8 @@ TEST(rbusSendAsyncResNegTest, test1)
 
     rc = rbusMethod_SendAsyncResponse(NULL, RBUS_ERROR_INVALID_INPUT, outParams);
     EXPECT_EQ(rc, RBUS_ERROR_INVALID_INPUT);
-    rbusObject_Release(outParams);
+    if(outParams)
+        rbusObject_Release(outParams);
 }
 
 TEST(rbusLogHandler, test1)

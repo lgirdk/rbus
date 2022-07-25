@@ -1004,6 +1004,12 @@ static rbusError_t methodHandler(rbusHandle_t handle, char const* methodName, rb
         return RBUS_ERROR_SUCCESS;
     }
     else
+    if(strstr(methodName, "Method11()"))
+    {
+        printf("methodHandler failed\n");
+        return RBUS_ERROR_INVALID_OPERATION;
+    }
+    else
     if(strstr(methodName, "Method2()"))
     {
         rbusValue_Init(&value);
@@ -1012,6 +1018,26 @@ static rbusError_t methodHandler(rbusHandle_t handle, char const* methodName, rb
         rbusValue_Release(value);
         printf("methodHandler success\n");
         return RBUS_ERROR_SUCCESS;
+    }
+    else
+    if(strstr(methodName, "Method3()"))
+    {
+        rbusValue_t value1, value2;
+
+        rbusValue_Init(&value1);
+        rbusValue_Init(&value2);
+        rbusValue_Init(&value);
+        rbusValue_SetString(value, "Method3()");
+        rbusObject_SetValue(outParams, "name", value);
+        rbusValue_Release(value);
+        rbusValue_SetInt32(value1, RBUS_ERROR_INVALID_OPERATION);
+        rbusValue_SetString(value2, "RBUS_ERROR_INVALID_OPERATION");
+        rbusObject_SetValue(outParams, "error_code", value1);
+        rbusObject_SetValue(outParams, "error_string", value2);
+        printf("methodHandler failed\n");
+        rbusValue_Release(value1);
+        rbusValue_Release(value2);
+        return RBUS_ERROR_INVALID_OPERATION;
     }
     else
     if(strstr(methodName, "MethodAsync1()"))
@@ -1417,7 +1443,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    #define numDataElems 56
+    #define numDataElems 58
 
     rbusDataElement_t dataElement[numDataElems] = {
         {"Device.%s.Event1!", RBUS_ELEMENT_TYPE_EVENT, {NULL,NULL,NULL,NULL, eventSubHandler, NULL}},
@@ -1448,6 +1474,8 @@ int main(int argc, char *argv[])
         {"Device.%s.TableReg.{i}.", RBUS_ELEMENT_TYPE_TABLE, {NULL, NULL, tableRegAddRowHandler, tableRegRemoveRowHandler, tableRegSubHandler, NULL}},
         {"Device.%s.TableReg.{i}.TableReg.{i}.", RBUS_ELEMENT_TYPE_TABLE, {NULL, NULL, tableRegAddRowHandler, tableRegRemoveRowHandler, tableRegSubHandler, NULL}},
         {"Device.%s.ResetTables", RBUS_ELEMENT_TYPE_PROPERTY, {NULL, resetTablesSetHandler, NULL, NULL, NULL, NULL}},
+        {"Device.%s.Method11()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}},
+        {"Device.%s.Method3()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}},
         {"Device.%s.Table1.{i}.Method1()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}},
         {"Device.%s.Table1.{i}.Table2.{i}.Method2()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}},
         {"Device.%s.MethodAsync1()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}},

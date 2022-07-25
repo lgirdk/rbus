@@ -92,6 +92,22 @@ static rbusError_t methodHandler(rbusHandle_t handle, char const* methodName, rb
 
         return RBUS_ERROR_SUCCESS;
     }
+    else if(strcmp(methodName, "Device.Methods.SimpleMethod1()") == 0)
+    {
+        rbusValue_t value1,value2;
+        rbusValue_Init(&value1);
+        rbusValue_SetInt32(value1, 56789);
+        rbusObject_SetValue(outParams, "error_code", value1);
+        rbusValue_Release(value1);
+
+        rbusValue_Init(&value2);
+        rbusValue_SetString(value2, "Provider Specific Error Code");
+        rbusObject_SetValue(outParams, "error_string", value2);
+        rbusValue_Release(value2);
+
+        return RBUS_ERROR_INVALID_METHOD;
+
+    }
     else if(strcmp(methodName, "Device.Methods.AsyncMethod()") == 0)
     {
         pthread_t pid;
@@ -125,8 +141,9 @@ int main(int argc, char *argv[])
 
     char componentName[] = "MethodProvider";
 
-    rbusDataElement_t dataElements[2] = {
+    rbusDataElement_t dataElements[3] = {
         {"Device.Methods.SimpleMethod()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}},
+        {"Device.Methods.SimpleMethod1()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}},
         {"Device.Methods.AsyncMethod()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, methodHandler}}
     };
 
@@ -139,7 +156,7 @@ int main(int argc, char *argv[])
         goto exit2;
     }
 
-    rc = rbus_regDataElements(handle, 2, dataElements);
+    rc = rbus_regDataElements(handle, 3, dataElements);
     if(rc != RBUS_ERROR_SUCCESS)
     {
         printf("provider: rbus_regDataElements failed: %d\n", rc);
@@ -153,7 +170,7 @@ int main(int argc, char *argv[])
         loopFor--;
     }
 
-    rbus_unregDataElements(handle, 2, dataElements);
+    rbus_unregDataElements(handle, 3, dataElements);
 exit1:
     rbus_close(handle);
 exit2:
