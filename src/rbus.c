@@ -4417,6 +4417,8 @@ rbusError_t rbusMethod_Invoke(
     rbusObject_t inParams, 
     rbusObject_t* outParams)
 {
+    VERIFY_NULL(handle);
+    VERIFY_NULL(methodName);
     return rbusMethod_InvokeInternal(handle, methodName, inParams, outParams, rbusConfig_ReadSetTimeout());
 }
 
