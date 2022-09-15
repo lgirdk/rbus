@@ -3904,7 +3904,7 @@ static rbusError_t rbusEvent_SubscribeWithRetries(
 
     for(;;)
     {
-        RBUSLOG_INFO("%s: %s subscribing", __FUNCTION__, eventName);
+        RBUSLOG_DEBUG("%s: %s subscribing", __FUNCTION__, eventName);
 
         coreerr = rbus_subscribeToEventTimeout(NULL, sub->eventName, _event_callback_handler, payload, sub, &providerError, destNotFoundTimeout);
         
@@ -3915,8 +3915,7 @@ static rbusError_t rbusEvent_SubscribeWithRetries(
             if(sleepTime > destNotFoundTimeout)
                 sleepTime = destNotFoundTimeout;
 
-            RBUSLOG_INFO("%s: %s no provider. retry in %d ms with %d left", 
-                __FUNCTION__, eventName, sleepTime, destNotFoundTimeout );
+            RBUSLOG_DEBUG("%s: %s no provider. retry in %d ms with %d left", __FUNCTION__, eventName, sleepTime, destNotFoundTimeout );
 
             //TODO: do we need pthread_cond_timedwait ?  e.g. maybe another thread calls rbus_close and we need to shutdown
             sleep(sleepTime/1000);
@@ -3955,19 +3954,19 @@ static rbusError_t rbusEvent_SubscribeWithRetries(
 
         if(coreerr == RTMESSAGE_BUS_ERROR_DESTINATION_UNREACHABLE)
         {
-            RBUSLOG_INFO("%s: %s all subscribe retries failed because no provider could be found", __FUNCTION__, eventName);
+            RBUSLOG_DEBUG("%s: %s all subscribe retries failed because no provider could be found", __FUNCTION__, eventName);
             RBUSLOG_WARN("EVENT_SUBSCRIPTION_FAIL_NO_PROVIDER_COMPONENT  %s", eventName);/*RDKB-33658-AC7*/
             return RBUS_ERROR_TIMEOUT;
         }
         else if(providerError != RBUS_ERROR_SUCCESS)
         {   
-            RBUSLOG_INFO("%s: %s subscribe retries failed due provider error %d", __FUNCTION__, eventName, providerError);
+            RBUSLOG_DEBUG("%s: %s subscribe retries failed due provider error %d", __FUNCTION__, eventName, providerError);
             RBUSLOG_WARN("EVENT_SUBSCRIPTION_FAIL_INVALID_INPUT  %s", eventName);/*RDKB-33658-AC9*/
             return providerError;
         }
         else
         {
-            RBUSLOG_INFO("%s: %s subscribe retries failed due to core error %d", __FUNCTION__, eventName, coreerr);
+            RBUSLOG_WARN("%s: %s subscribe retries failed due to core error %d", __FUNCTION__, eventName, coreerr);
             return RBUS_ERROR_BUS_ERROR;
         }
     }
@@ -3990,11 +3989,6 @@ rbusError_t  rbusEvent_Subscribe(
 
     errorcode = rbusEvent_SubscribeWithRetries(handle, eventName, handler, userData, NULL, 0, 0 , timeout, NULL);
 
-    if(errorcode != RBUS_ERROR_SUCCESS)
-    {
-        RBUSLOG_WARN("%s: %s failed err=%d", __FUNCTION__, eventName, errorcode);
-    }
-
     return errorcode;
 }
 
@@ -4016,11 +4010,6 @@ rbusError_t  rbusEvent_SubscribeAsync(
     RBUSLOG_DEBUG("%s: %s", __FUNCTION__, eventName);
 
     errorcode = rbusEvent_SubscribeWithRetries(handle, eventName, handler, userData, NULL, 0, 0, timeout, subscribeHandler);
-
-    if(errorcode != RBUS_ERROR_SUCCESS)
-    {
-        RBUSLOG_WARN("%s: %s failed err=%d", __FUNCTION__, eventName, errorcode);
-    }
 
     return errorcode;
 }
@@ -4094,7 +4083,7 @@ rbusError_t rbusEvent_SubscribeEx(
 
     for(i = 0; i < numSubscriptions; ++i)
     {
-        RBUSLOG_INFO("%s: %s", __FUNCTION__, subscription[i].eventName);
+        RBUSLOG_DEBUG ("%s: %s", __FUNCTION__, subscription[i].eventName);
 
         //FIXME/TODO -- since this is not using async path, this could block and thus block the rest of the subs to come
         //For rbusEvent_Subscribe, since it a single subscribe, blocking is fine but for rbusEvent_SubscribeEx,
@@ -4106,8 +4095,6 @@ rbusError_t rbusEvent_SubscribeEx(
 
         if(errorcode != RBUS_ERROR_SUCCESS)
         {
-            RBUSLOG_WARN("%s: %s failed err=%d", __FUNCTION__, subscription[i].eventName, errorcode);
-
             /*  Treat SubscribeEx like a transaction because
                 if any subs fails, how will the user know which ones succeeded and which failed ?
                 So, as a transaction, we just undo everything, which are all those from 0 to i-1.
@@ -4341,7 +4328,7 @@ rbusError_t  rbusEvent_Publish(
 
             rbusEventData_appendToMessage(eventData, subscription->filter, subscription->componentId, msg);
 
-            RBUSLOG_INFO("rbusEvent_Publish: publishing event %s to listener %s", subscription->eventName, subscription->listener);
+            RBUSLOG_DEBUG("rbusEvent_Publish: publishing event %s to listener %s", subscription->eventName, subscription->listener);
 
             err = rbus_publishSubscriberEvent(
                 handleInfo->componentName,  
