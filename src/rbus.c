@@ -2048,6 +2048,7 @@ static int _method_callback_handler(rbusHandle_t handle, rbusMessage request, rb
 
     if(result == RBUS_ERROR_ASYNC_RESPONSE)
     {
+        rbusObject_Release(outParams);
         return RTMESSAGE_BUS_SUCCESS_ASYNC;
     }
     else
