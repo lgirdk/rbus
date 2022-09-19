@@ -1406,7 +1406,7 @@ static char const* _convert_reg_name_to_instance_name(char const* registrationNa
     node can be either an instance node or a registration node (if an instance node doesn't exist).
     query will be set if node is a registration node, so that registration names can be converted to instance names
  */
-static void _get_recursive_wildcard_handler(elementNode* node, char const* query, rbusHandle_t handle, const char* pRequestingComp, rbusProperty_t properties, int *pCount, int level)
+static void _get_recursive_partialpath_handler(elementNode* node, char const* query, rbusHandle_t handle, const char* pRequestingComp, rbusProperty_t properties, int *pCount, int level)
 {
     rbusGetHandlerOptions_t options;
     memset(&options, 0, sizeof(options));
@@ -1414,7 +1414,7 @@ static void _get_recursive_wildcard_handler(elementNode* node, char const* query
     /* Update the Get Handler input options */
     options.requestingComponent = pRequestingComp;
 
-    RBUSLOG_DEBUG("%*s_get_recursive_wildcard_handler node=%s type=%d query=%s", level*4, " ", node ? node->fullName : "NULL", node ? node->type : 0, query ? query : "NULL");
+    RBUSLOG_DEBUG("%*s_get_recursive_partialpath_handler node=%s type=%d query=%s", level*4, " ", node ? node->fullName : "NULL", node ? node->type : 0, query ? query : "NULL");
 
     if (node != NULL)
     {
@@ -1429,7 +1429,7 @@ static void _get_recursive_wildcard_handler(elementNode* node, char const* query
             snprintf(partialPath, RBUS_MAX_NAME_LENGTH-1, "%s.", 
                      query ? _convert_reg_name_to_instance_name(node->fullName, query, instanceName) : node->fullName);
 
-            RBUSLOG_DEBUG("%*s_get_recursive_wildcard_handler calling table getHandler partialPath=%s", level*4, " ", partialPath);
+            RBUSLOG_DEBUG("%*s_get_recursive_partialpath_handler calling table getHandler partialPath=%s", level*4, " ", partialPath);
 
             rbusProperty_Init(&tmpProperties, partialPath, NULL);
 
@@ -1439,7 +1439,7 @@ static void _get_recursive_wildcard_handler(elementNode* node, char const* query
             {
                 int count = rbusProperty_Count(tmpProperties);
 
-                RBUSLOG_DEBUG("%*s_get_recursive_wildcard_handler table getHandler returned %d properties", level*4, " ", count-1);
+                RBUSLOG_DEBUG("%*s_get_recursive_partialpath_handler table getHandler returned %d properties", level*4, " ", count-1);
 
                 /*the first property is just the partialPath we passed in */
                 if(count > 1)
@@ -1451,7 +1451,7 @@ static void _get_recursive_wildcard_handler(elementNode* node, char const* query
             }
             else
             {
-                RBUSLOG_DEBUG("%*s_get_recursive_wildcard_handler table getHandler failed rc=%d", level*4, " ", result);
+                RBUSLOG_DEBUG("%*s_get_recursive_partialpath_handler table getHandler failed rc=%d", level*4, " ", result);
             }
             
             rbusProperty_Release(tmpProperties);
@@ -1468,7 +1468,7 @@ static void _get_recursive_wildcard_handler(elementNode* node, char const* query
                 char instanceName[RBUS_MAX_NAME_LENGTH];
                 rbusProperty_t tmpProperties;
 
-                RBUSLOG_DEBUG("%*s_get_recursive_wildcard_handler calling property getHandler node=%s", level*4, " ", child->fullName);
+                RBUSLOG_DEBUG("%*s_get_recursive_partialpath_handler calling property getHandler node=%s", level*4, " ", child->fullName);
 
                 rbusProperty_Init(&tmpProperties, query ? _convert_reg_name_to_instance_name(child->fullName, query, instanceName) : child->fullName, NULL);
                 result = child->cbTable.getHandler(handle, tmpProperties, &options);
@@ -1480,14 +1480,14 @@ static void _get_recursive_wildcard_handler(elementNode* node, char const* query
                 rbusProperty_Release(tmpProperties);
             }
             /*recurse into children that are not row templates without table getHandler*/
-            else if( child->child && !(child->parent->type == RBUS_ELEMENT_TYPE_TABLE && strcmp(child->name, "{i}") == 0 && child->cbTable.getHandler == NULL) )
+            else if(child->child && !(child->parent->type == RBUS_ELEMENT_TYPE_TABLE && strcmp(child->name, "{i}") == 0 && child->cbTable.getHandler == NULL) )
             {
-                RBUSLOG_DEBUG("%*s_get_recursive_wildcard_handler recurse into %s", level*4, " ", child->fullName);
-                _get_recursive_wildcard_handler(child, query, handle, pRequestingComp, properties, pCount, level+1);
+                RBUSLOG_DEBUG("%*s_get_recursive_partialpath_handler recurse into %s", level*4, " ", child->fullName);
+                _get_recursive_partialpath_handler(child, query, handle, pRequestingComp, properties, pCount, level+1);
             }
             else
             {
-                RBUSLOG_DEBUG("%*s_get_recursive_wildcard_handler skipping %s", level*4, " ", child->fullName);
+                RBUSLOG_DEBUG("%*s_get_recursive_partialpath_handler skipping %s", level*4, " ", child->fullName);
             }
 
             child = child->nextSibling;
@@ -1495,9 +1495,144 @@ static void _get_recursive_wildcard_handler(elementNode* node, char const* query
     }
 }
 
-static void _get_callback_handler (rbusHandle_t handle, rbusMessage request, rbusMessage *response)
+static rbusError_t _get_recursive_wildcard_handler (rbusHandle_t handle, char const *parameterName, const char* pRequestingComp, rbusProperty_t properties, int *pCount)
 {
     struct _rbusHandle* handleInfo = (struct _rbusHandle*)handle;
+    rbusError_t result = RBUS_ERROR_SUCCESS;
+    elementNode* el = NULL;
+    elementNode* child = NULL;
+
+    char instanceName[RBUS_MAX_NAME_LENGTH];
+    char wildcardName[RBUS_MAX_NAME_LENGTH];
+    char* tmpPtr = NULL;
+
+    /* Update the Get Handler input options */
+    rbusGetHandlerOptions_t options;
+    options.requestingComponent = pRequestingComp;
+
+    /* Have the backup of given name */
+    snprintf(instanceName, RBUS_MAX_NAME_LENGTH, "%s", parameterName);
+    int length = strlen(instanceName) - 1;
+
+    if ((instanceName[length] == '*') && (instanceName[length-1] == '.'))
+    {
+        instanceName[length] = '\0';
+        length--;
+    }
+
+    /* Identify whether it is wildcard or partial path */
+    tmpPtr = strstr(instanceName, "*");
+    if (tmpPtr)
+    {
+        tmpPtr[0] = '\0';
+        tmpPtr++;
+
+        el = retrieveInstanceElement(handleInfo->elementRoot, instanceName);
+        if (!el)
+            return RBUS_ERROR_ELEMENT_DOES_NOT_EXIST;
+
+        else if(el->type != RBUS_ELEMENT_TYPE_TABLE)
+            return RBUS_ERROR_ACCESS_NOT_ALLOWED;
+
+        child = el->child;
+        while(child)
+        {
+            if(strcmp(child->name, "{i}") != 0)
+            {
+                snprintf (wildcardName, RBUS_MAX_NAME_LENGTH, "%s%s%s", instanceName, child->name, tmpPtr);
+                result = _get_recursive_wildcard_handler(handle, wildcardName, pRequestingComp, properties, pCount);
+                if (result != RBUS_ERROR_SUCCESS)
+                {
+                    RBUSLOG_WARN("Something went wrong while retriving the datamodel value...");
+                    break;
+                }
+            }
+            child = child->nextSibling;
+        }
+    }
+    else if (instanceName[length] == '.')
+    {
+        int hasInstance = 1;
+        el = retrieveInstanceElement(handleInfo->elementRoot, instanceName);
+
+        if(el)
+        {
+            if(strstr(el->fullName, "{i}"))
+                hasInstance = 0;
+
+            _get_recursive_partialpath_handler(el, hasInstance ? NULL : parameterName, handle, pRequestingComp, properties, pCount, 0);
+        }
+        else
+            result = RBUS_ERROR_ELEMENT_DOES_NOT_EXIST;
+    }
+    else
+    {
+        child = retrieveInstanceElement(handleInfo->elementRoot, instanceName);
+        if (!child)
+            return RBUS_ERROR_ELEMENT_DOES_NOT_EXIST;
+
+        if(child->type != RBUS_ELEMENT_TYPE_TABLE && child->cbTable.getHandler)
+        {
+            rbusError_t result;
+            rbusProperty_t tmpProperties;
+            rbusProperty_Init(&tmpProperties, instanceName, NULL);
+            result = child->cbTable.getHandler(handle, tmpProperties, &options);
+            if (result == RBUS_ERROR_SUCCESS)
+            {
+                rbusProperty_Append(properties, tmpProperties);
+                *pCount += 1;
+            }
+            rbusProperty_Release(tmpProperties);
+            return result;
+        }
+    }
+    return result;
+}
+
+
+static rbusError_t _get_single_dml_handler (rbusHandle_t handle, char const *parameterName, char const *pRequestingComp, rbusProperty_t properties)
+{
+    struct _rbusHandle* handleInfo = (struct _rbusHandle*)handle;
+    elementNode* el = NULL;
+    rbusError_t result = RBUS_ERROR_SUCCESS;
+    /* Update the Get Handler input options */
+    rbusGetHandlerOptions_t options;
+    options.requestingComponent = pRequestingComp;
+
+    RBUSLOG_DEBUG("calling get single for [%s]", parameterName);
+
+    el = retrieveInstanceElement(handleInfo->elementRoot, parameterName);
+    if(el != NULL)
+    {
+        RBUSLOG_DEBUG("Retrieved [%s]", parameterName);
+
+        if(el->cbTable.getHandler)
+        {
+            RBUSLOG_DEBUG("Table and CB exists for [%s], call the CB!", parameterName);
+
+            result = el->cbTable.getHandler(handle, properties, &options);
+
+            if (result != RBUS_ERROR_SUCCESS)
+            {
+                RBUSLOG_WARN("called CB with result [%d]", result);
+            }
+        }
+        else
+        {
+            RBUSLOG_WARN("Element retrieved, but no cb installed for [%s]!", parameterName);
+            result = RBUS_ERROR_INVALID_OPERATION;
+        }
+    }
+    else
+    {
+        RBUSLOG_WARN("Not able to retrieve element [%s]", parameterName);
+        result = RBUS_ERROR_ELEMENT_DOES_NOT_EXIST;
+    }
+    return result;
+}
+
+static void _get_callback_handler (rbusHandle_t handle, rbusMessage request, rbusMessage *response)
+{
     int paramSize = 1, i = 0;
     rbusError_t result = RBUS_ERROR_SUCCESS;
     char const *parameterName = NULL;
@@ -1526,8 +1661,6 @@ static void _get_callback_handler (rbusHandle_t handle, rbusMessage request, rbu
 
             for(i = 0; i < paramSize; i++)
             {
-                elementNode* el = NULL;
-
                 parameterName = NULL;
                 rbusMessage_GetString(request, &parameterName);
 
@@ -1536,31 +1669,22 @@ static void _get_callback_handler (rbusHandle_t handle, rbusMessage request, rbu
                 rbusProperty_SetName(properties[i], parameterName);
 
                 /* Check for wildcard query */
-                int length = strlen(parameterName) - 1;
-                if (parameterName[length] == '.')
+                if (_is_wildcard_query(parameterName))
                 {
-                    int hasInstance = 1;
-                    RBUSLOG_DEBUG("handle the wildcard request..");
-                    rbusMessage_Init(response);
-
-                    el = retrieveInstanceElement(handleInfo->elementRoot, parameterName);
-                    if (el != NULL)
-                    {
-                        rbusProperty_t xproperties, first;
-                        rbusValue_t xtmp;
-                        int count = 0;
-
-                        if(strstr(el->fullName, "{i}"))
-                            hasInstance = 0;
+                    rbusProperty_t xproperties, first;
+                    rbusValue_t xtmp;
+                    int count = 0;
                             
-                        rbusValue_Init(&xtmp);
-                        rbusValue_SetString(xtmp, "tmpValue");
-                        rbusProperty_Init(&xproperties, "tmpProp", xtmp);
-                        rbusValue_Release(xtmp);
-                        _get_recursive_wildcard_handler(el, hasInstance ? NULL : parameterName, handle, pCompName, xproperties, &count, 0);
-                        RBUSLOG_DEBUG("We have identified %d entries that are matching the request and got the value. Lets return it.", count);
+                    rbusValue_Init(&xtmp);
+                    rbusValue_SetString(xtmp, "tmpValue");
+                    rbusProperty_Init(&xproperties, "tmpProp", xtmp);
+                    rbusValue_Release(xtmp);
 
-                        rbusMessage_SetInt32(*response, (int) RBUS_ERROR_SUCCESS);
+                    result = _get_recursive_wildcard_handler(handle, parameterName, pCompName, xproperties, &count);
+                    rbusMessage_Init(response);
+                    rbusMessage_SetInt32(*response, (int) result);
+                    if (result == RBUS_ERROR_SUCCESS)
+                    {
                         rbusMessage_SetInt32(*response, count);
                         if (count > 0)
                         {
@@ -1571,54 +1695,18 @@ static void _get_callback_handler (rbusHandle_t handle, rbusMessage request, rbu
                                 first = rbusProperty_GetNext(first);
                             }
                         }
-                        /* Release the memory */
-                        rbusProperty_Release(xproperties);
                     }
-                    else
-                    {
-                        rbusMessage_SetInt32(*response, (int) RBUS_ERROR_ELEMENT_DOES_NOT_EXIST);
-                    }
-
-                    /* Free the memory, regardless of success or not.. */
-                    for (i = 0; i < paramSize; i++)
-                    {
-                        rbusProperty_Release(properties[i]);
-                    }
-                    free (properties);
+                    /* Release the memory */
+                    rbusProperty_Release(xproperties);
 
                     return;
                 }
-
-                //Do a look up and call the corresponding method
-                el = retrieveInstanceElement(handleInfo->elementRoot, parameterName);
-                if(el != NULL)
-                {
-                    RBUSLOG_DEBUG("Retrieved [%s]", parameterName);
-
-                    if(el->cbTable.getHandler)
-                    {
-                        RBUSLOG_DEBUG("Table and CB exists for [%s], call the CB!", parameterName);
-
-                        result = el->cbTable.getHandler(handle, properties[i], &options);
-
-                        if (result != RBUS_ERROR_SUCCESS)
-                        {
-                            RBUSLOG_WARN("called CB with result [%d]", result);
-                            break;
-                        }
-                    }
-                    else
-                    {
-                        RBUSLOG_WARN("Element retrieved, but no cb installed for [%s]!", parameterName);
-                        result = RBUS_ERROR_INVALID_OPERATION;
-                        break;
-                    }
-                }
                 else
                 {
-                    RBUSLOG_WARN("Not able to retrieve element [%s]", parameterName);
-                    result = RBUS_ERROR_ACCESS_NOT_ALLOWED;
-                    break;
+                    //Do a look up and call the corresponding method
+                    result = _get_single_dml_handler(handle, parameterName, pCompName, properties[i]);
+                    if (result != RBUS_ERROR_SUCCESS)
+                        break;
                 }
             }
         }
@@ -2141,7 +2229,7 @@ rbusError_t rbus_open(rbusHandle_t* handle, char const* componentName)
         if(!handle)
             RBUSLOG_WARN("%s(%s): handle is NULL", __FUNCTION__, componentName);
         if(!componentName)
-            RBUSLOG_WARN("%s(%s): componentName is NULL", __FUNCTION__, componentName);
+            RBUSLOG_WARN("%s: componentName is NULL", __FUNCTION__);
         ret = RBUS_ERROR_INVALID_INPUT;
         goto exit_error0;
     }
@@ -2572,7 +2660,6 @@ rbusError_t rbus_get(rbusHandle_t handle, char const* name, rbusValue_t* value)
         RBUSLOG_DEBUG("Response from the remote method is [%d]!",ret);
         errorcode = (rbusError_t) ret;
         legacyRetCode = (rbusLegacyReturn_t) ret;
-        char const* pErrorReason = NULL;
 
         if((errorcode == RBUS_ERROR_SUCCESS) || (legacyRetCode == RBUS_LEGACY_ERR_SUCCESS))
         {
@@ -2599,8 +2686,6 @@ rbusError_t rbus_get(rbusHandle_t handle, char const* name, rbusValue_t* value)
         }
         else
         {
-            rbusMessage_GetString(response, &pErrorReason);
-            RBUSLOG_WARN("Failed to Get the Value for %s", pErrorReason);
             if(legacyRetCode > RBUS_LEGACY_ERR_SUCCESS)
             {
                 errorcode = CCSPError_to_rbusError(legacyRetCode);
@@ -2626,7 +2711,6 @@ rbusError_t _getExt_response_parser(rbusMessage response, int *numValues, rbusPr
 
     errorcode = (rbusError_t) ret;
     legacyRetCode = (rbusLegacyReturn_t) ret;
-    char const* pErrorReason = NULL;
 
     *numValues = 0;
     if((errorcode == RBUS_ERROR_SUCCESS) || (legacyRetCode == RBUS_LEGACY_ERR_SUCCESS))
@@ -2661,8 +2745,6 @@ rbusError_t _getExt_response_parser(rbusMessage response, int *numValues, rbusPr
     }
     else
     {
-        rbusMessage_GetString(response, &pErrorReason);
-        RBUSLOG_WARN("Failed to Get the Value for %s", pErrorReason);
         if(legacyRetCode > RBUS_LEGACY_ERR_SUCCESS)
         {
             errorcode = CCSPError_to_rbusError(legacyRetCode);
@@ -4480,7 +4562,7 @@ rbusError_t rbusMethod_InvokeAsync(
         return RBUS_ERROR_BUS_ERROR;
     }
 
-	if((err = pthread_detach(pid)) != 0)
+    if((err = pthread_detach(pid)) != 0)
     {
         RBUSLOG_ERROR("%s pthread_detach failed: err=%d", __FUNCTION__, err);
     }
