@@ -664,6 +664,7 @@ TEST(rbusSubExAsyncNegTest, test1)
 
     handle = (struct _rbusHandle *) malloc(sizeof(struct _rbusHandle));
     rc = rbusEvent_SubscribeExAsync(handle, &subscription, 0, subscribeHandler, 0);
+    free(eventReceiveHandler);
     free(handle);
 }
 
@@ -677,6 +678,7 @@ TEST(rbusSubExAsyncNegTest, test2)
 
     handle = (struct _rbusHandle *) malloc(sizeof(struct _rbusHandle));
     rc = rbusEvent_SubscribeExAsync(handle, &subscription, 1, NULL, 0);
+    free(eventReceiveHandler);
     free(handle);
 }
 
@@ -699,6 +701,7 @@ TEST(rbusSubExAsyncNegTest, test4)
     rbusEventSubscription_t subscription = {"Device.rbusProvider.Param1", NULL, 0, 0, (void *)eventReceiveHandler, NULL, 0};
 
     rc = rbusEvent_SubscribeExAsync(handle, &subscription, 1, subscribeHandler, 0);
+    free(eventReceiveHandler);
 }
 
 TEST(rbusUnsubNegTest, test1)
@@ -731,6 +734,7 @@ TEST(rbusUnsubExNegTest, test1)
 
     handle = (struct _rbusHandle *) malloc(sizeof(struct _rbusHandle));
     rc = rbusEvent_UnsubscribeEx(handle, &subscription, 0);
+    free(eventReceiveHandler);
     free(handle);
 }
 
@@ -743,6 +747,7 @@ TEST(rbusUnsubExNegTest, test2)
     rbusEventSubscription_t subscription = {"Device.rbusProvider.Param1", NULL, 0, 0, (void *)eventReceiveHandler, NULL, 0};
 
     rc = rbusEvent_UnsubscribeEx(handle, &subscription, 1);
+    free(eventReceiveHandler);
 }
 
 TEST(rbusUnsubExNegTest, test3)
@@ -765,6 +770,7 @@ TEST(rbusSubExNegTest, test1)
 
     rc = rbusEvent_SubscribeEx(handle, &subscription, 1, 0);
     EXPECT_EQ(rc,RBUS_ERROR_INVALID_INPUT);
+    free(eventReceiveHandler);
 }
 
 TEST(rbusSubExNegTest, test2)
@@ -778,6 +784,7 @@ TEST(rbusSubExNegTest, test2)
     handle = (struct _rbusHandle *) malloc(sizeof(struct _rbusHandle));
     rc = rbusEvent_SubscribeEx(handle, &subscription, 0, 0);
     EXPECT_EQ(rc,RBUS_ERROR_INVALID_INPUT);
+    free(eventReceiveHandler);
     free(handle);
 }
 

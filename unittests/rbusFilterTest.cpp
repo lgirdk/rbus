@@ -43,6 +43,7 @@ static void testEncodeDecode(rbusFilter_t f1)
 
         rbusBuffer_Destroy(buff);
     }
+    free(stream_buf);
 }
 
 TEST(rbusFilterEncDecTest, testFilterEncDec1)
@@ -256,6 +257,8 @@ TEST(rbusFilterInitTest, testFilterInit3)
   EXPECT_EQ(filter_left,rbusFilter_GetLogicLeft(filter));
   EXPECT_EQ(filter_right,rbusFilter_GetLogicRight(filter));
   rbusFilter_Release(filter);
+  rbusFilter_Release(filter_left);
+  rbusFilter_Release(filter_right);
 }
 
 static void execRbusFilterLogicOperatorTest(rbusFilter_LogicOperator_t op)
@@ -359,6 +362,8 @@ static void execRbusFilterApplyTest(char *buffer1, char *buffer2, char *filter_b
   EXPECT_EQ(rbusFilter_Apply(filter,val3),true);
 
   rbusFilter_Release(filter);
+  rbusFilter_Release(filter_rel1);
+  rbusFilter_Release(filter_rel2);
   rbusValue_Release(val1);
   rbusValue_Release(val2);
   rbusValue_Release(val3);
@@ -398,6 +403,7 @@ static void execRbusFilterApplyTest(char *buffer1, char *buffer2, char *filter_b
       EXPECT_NE(nullptr,strstr(stream_buf,"<="));
     break;
   }
+  free(stream_buf);
 }
 
 TEST(rbusFilterApplyTest, testFilterApply1)
