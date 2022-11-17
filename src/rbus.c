@@ -2179,6 +2179,13 @@ static int _callback_handler(char const* destination, char const* method, rbusMe
     {
         return _method_callback_handler (handle, request, response, hdr);
     }
+    else if (!strcmp(method, METHOD_GETPARAMETERATTRIBUTES))
+    {
+        /* For the components register directly with rbus_open,
+         * return success for getAttributes with 0 parameters.*/
+        rbusMessage_Init(response);
+        rbusMessage_SetInt32(*response, RBUS_ERROR_SUCCESS);
+    }
     else
     {
         RBUSLOG_WARN("unhandled callback for [%s] method!", method);
